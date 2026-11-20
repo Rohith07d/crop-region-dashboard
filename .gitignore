@@ -1,0 +1,37 @@
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Datasets & Data Files
+*.csv
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment Variables & Secrets
+.env
+.env.*
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Scratch / Test Scripts & Visualizations (keep deployment repo lightweight)
+test_*.py
+build_full_dataset.py
+train_models.py
+visualize_models.py
+preprocess_audit.py
+save.py
+*.png
