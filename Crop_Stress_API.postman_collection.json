@@ -1,0 +1,157 @@
+{
+  "info": {
+    "_postman_id": "c9e2b10a-7e3f-4e78-9a25-83c9d749a1f2",
+    "name": "Crop Water Stress & Irrigation Priority API",
+    "description": "Production verification collection for the Crop Water Stress ML Model & FastAPI backend deployed on Render.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://crop-stress-api.onrender.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Meta",
+      "item": [
+        {
+          "name": "GET Root Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            },
+            "description": "Returns operational status message."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Health & Model Registry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Returns health state, loaded regression and classification models, and list of 15 supported crops."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Stress Prediction",
+      "item": [
+        {
+          "name": "POST /predict-stress (Severe Drought - Critical Risk)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crop_type\": \"Rice\",\n  \"soil_type\": \"Red_Sandy\",\n  \"growth_stage\": \"Mid_Season\",\n  \"soil_moisture_top\": 0.18,\n  \"soil_moisture_root\": 0.18,\n  \"soil_moisture_prof\": 0.18,\n  \"temp_max\": 43.0,\n  \"temp_min\": 28.0,\n  \"humidity\": 25.0,\n  \"wind_speed\": 3.5,\n  \"solar_radiation\": 22.0,\n  \"rainfall_10d\": 0.0,\n  \"et0_10d\": 70.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/predict-stress",
+              "host": ["{{baseUrl}}"],
+              "path": ["predict-stress"]
+            },
+            "description": "Severe drought and thermal spike test case. Expects CSI > 0.65 and Risk: Critical."
+          },
+          "response": []
+        },
+        {
+          "name": "POST /predict-stress (Optimal Conditions - Low Risk)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crop_type\": \"Rice\",\n  \"soil_type\": \"Alluvial_Loam\",\n  \"growth_stage\": \"Initial\",\n  \"soil_moisture_top\": 0.65,\n  \"soil_moisture_root\": 0.65,\n  \"soil_moisture_prof\": 0.65,\n  \"temp_max\": 30.0,\n  \"temp_min\": 22.0,\n  \"humidity\": 70.0,\n  \"wind_speed\": 2.0,\n  \"solar_radiation\": 16.0,\n  \"rainfall_10d\": 45.0,\n  \"et0_10d\": 35.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/predict-stress",
+              "host": ["{{baseUrl}}"],
+              "path": ["predict-stress"]
+            },
+            "description": "Optimal moisture and mild temperature test case. Expects CSI < 0.25 and Risk: Low."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Irrigation & Allocation",
+      "item": [
+        {
+          "name": "POST /prioritize-irrigation (3-Plot Allocation - 50k Liters)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"total_water_liters\": 50000.0,\n  \"min_csi_threshold\": 0.10,\n  \"plots\": [\n    {\n      \"plot_id\": \"Plot_A\",\n      \"crop_type\": \"Rice\",\n      \"soil_type\": \"Red_Sandy\",\n      \"growth_stage\": \"Mid_Season\",\n      \"area_acres\": 2.0,\n      \"soil_moisture_top\": 0.18,\n      \"soil_moisture_root\": 0.18,\n      \"soil_moisture_prof\": 0.18,\n      \"temp_max\": 42.0,\n      \"temp_min\": 28.0,\n      \"humidity\": 25.0,\n      \"wind_speed\": 3.5,\n      \"solar_radiation\": 22.0,\n      \"rainfall_10d\": 0.0,\n      \"et0_10d\": 65.0\n    },\n    {\n      \"plot_id\": \"Plot_B\",\n      \"crop_type\": \"Maize\",\n      \"soil_type\": \"Alluvial_Loam\",\n      \"growth_stage\": \"Development\",\n      \"area_acres\": 2.0,\n      \"soil_moisture_top\": 0.45,\n      \"soil_moisture_root\": 0.45,\n      \"soil_moisture_prof\": 0.45,\n      \"temp_max\": 34.0,\n      \"temp_min\": 22.0,\n      \"humidity\": 55.0,\n      \"wind_speed\": 2.0,\n      \"solar_radiation\": 18.0,\n      \"rainfall_10d\": 5.0,\n      \"et0_10d\": 45.0\n    },\n    {\n      \"plot_id\": \"Plot_C\",\n      \"crop_type\": \"Cotton\",\n      \"soil_type\": \"Black_Clay\",\n      \"growth_stage\": \"Late_Season\",\n      \"area_acres\": 2.0,\n      \"soil_moisture_top\": 0.65,\n      \"soil_moisture_root\": 0.65,\n      \"soil_moisture_prof\": 0.65,\n      \"temp_max\": 32.0,\n      \"temp_min\": 22.0,\n      \"humidity\": 65.0,\n      \"wind_speed\": 2.0,\n      \"solar_radiation\": 16.0,\n      \"rainfall_10d\": 25.0,\n      \"et0_10d\": 38.0\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/prioritize-irrigation",
+              "host": ["{{baseUrl}}"],
+              "path": ["prioritize-irrigation"]
+            },
+            "description": "Multi-plot weighted water distribution based on continuous CSI, growth stage vulnerability, and acreage."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Crop Recommendation",
+      "item": [
+        {
+          "name": "POST /recommend-crops (Hot & Arid Soil Scenario)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"soil_type\": \"Red_Sandy\",\n  \"growth_stage\": \"Mid_Season\",\n  \"soil_moisture_top\": 0.20,\n  \"soil_moisture_root\": 0.20,\n  \"soil_moisture_prof\": 0.20,\n  \"temp_max\": 41.0,\n  \"temp_min\": 26.0,\n  \"humidity\": 30.0,\n  \"wind_speed\": 3.5,\n  \"solar_radiation\": 22.0,\n  \"rainfall_10d\": 0.0,\n  \"et0_10d\": 65.0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/recommend-crops",
+              "host": ["{{baseUrl}}"],
+              "path": ["recommend-crops"]
+            },
+            "description": "Evaluates all 15 crops and ranks top 5 most climate-resilient options sorted ascending by predicted CSI."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
