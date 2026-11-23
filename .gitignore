@@ -28,6 +28,7 @@ Thumbs.db
 htmlcov/
 
 # Local Scratch / Test Scripts & Visualizations (keep deployment repo lightweight)
+*.sqlite
 test_*.py
 build_full_dataset.py
 train_models.py

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgriStress — Regional Crop & Water Intelligence</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- App Header & Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-icon">🌱</div>
+        <div>
+          <h1>AgriStress Regional Intelligence</h1>
+          <p class="subtitle">Real-Time Open-Meteo Satellite Feed • FAO-56 Stress Modeling • Priority Water Allocation</p>
+        </div>
+      </div>
+      <div class="header-controls">
+        <div class="region-selector-wrap">
+          <label for="regionSelect">Agricultural Region:</label>
+          <select id="regionSelect" class="region-select">
+            <option value="" disabled selected>Loading regions...</option>
+          </select>
+        </div>
+        <button id="refreshBtn" class="btn btn-secondary" title="Refresh Live Weather & Recalculate">
+          <span class="refresh-icon">🔄</span> Sync Live Data
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+
+    <!-- Region Meta & Live Weather Ribbon -->
+    <section class="region-banner">
+      <div class="region-meta-card">
+        <div class="region-meta-header">
+          <h2 id="regionNameTitle">—</h2>
+          <span id="regionStatePill" class="meta-pill state-pill">—</span>
+          <span id="dbSourcePill" class="meta-pill db-pill">DB: Connecting...</span>
+        </div>
+        <div class="region-meta-details">
+          <div class="meta-item">
+            <span class="meta-label">Coordinates</span>
+            <span id="regionCoords" class="meta-val">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Dominant Soil</span>
+            <span id="regionSoil" class="meta-val soil-val">—</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Total Water Reservoir</span>
+            <span id="regionWaterQuota" class="meta-val highlight-val">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Open-Meteo Weather Ribbon -->
+      <div class="weather-ribbon-card">
+        <div class="weather-ribbon-header">
+          <div class="live-indicator">
+            <span class="live-dot"></span>
+            <span id="weatherSourceBadge">Open-Meteo Satellite Feed</span>
+          </div>
+          <span id="weatherDateBadge" class="date-badge">Today</span>
+        </div>
+        <div class="weather-metrics-grid">
+          <div class="w-metric">
+            <span class="w-icon">🌡️</span>
+            <div>
+              <span class="w-label">Max / Min Temp</span>
+              <span id="wTemp" class="w-value">— / — °C</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">💧</span>
+            <div>
+              <span class="w-label">Mean Humidity</span>
+              <span id="wHumidity" class="w-value">—%</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">💨</span>
+            <div>
+              <span class="w-label">Wind Speed</span>
+              <span id="wWind" class="w-value">— m/s</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">☀️</span>
+            <div>
+              <span class="w-label">Solar Radiation</span>
+              <span id="wSolar" class="w-value">— MJ/m²</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">🌧️</span>
+            <div>
+              <span class="w-label">Rainfall (10d)</span>
+              <span id="wRain" class="w-value">— mm</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">🌿</span>
+            <div>
+              <span class="w-label">ET0 (10d)</span>
+              <span id="wEt0" class="w-value">— mm</span>
+            </div>
+          </div>
+          <div class="w-metric highlight-sm">
+            <span class="w-icon">🛰️</span>
+            <div>
+              <span class="w-label">Satellite Root Soil (7-28cm)</span>
+              <span id="wSoilRoot" class="w-value sm-highlight">— m³/m³</span>
+            </div>
+          </div>
+          <div class="w-metric">
+            <span class="w-icon">🌍</span>
+            <div>
+              <span class="w-label">Top / Prof Soil (0-7 / 28-100cm)</span>
+              <span id="wSoilTopProf" class="w-value">— / —</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 1: Regional Risk & Water Overview -->
+    <section class="dashboard-section">
+      <div class="section-header">
+        <div class="section-title-wrap">
+          <span class="section-num">01</span>
+          <h2>Regional Risk & Water Overview</h2>
+        </div>
+        <p class="section-desc">Macro physiological stress summary, quota utilization, and multi-plot allocation metrics.</p>
+      </div>
+
+      <!-- 4 KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Total Monitored Area</span>
+            <span class="kpi-icon">🌾</span>
+          </div>
+          <div class="kpi-body">
+            <span id="kpiAcreage" class="kpi-number">—</span>
+            <span class="kpi-unit">Acres</span>
+          </div>
+          <div class="kpi-footer">Across all active farmer plots</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Registered Plots</span>
+            <span class="kpi-icon">🚜</span>
+          </div>
+          <div class="kpi-body">
+            <span id="kpiPlots" class="kpi-number">—</span>
+            <span class="kpi-unit">Plots</span>
+          </div>
+          <div class="kpi-footer" id="kpiCropsCount">Tracking diverse crops</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Regional Average CSI</span>
+            <span class="kpi-icon">📊</span>
+          </div>
+          <div class="kpi-body">
+            <span id="kpiAvgCsi" class="kpi-number">—</span>
+            <span id="kpiCsiStatusPill" class="csi-badge">—</span>
+          </div>
+          <div class="kpi-footer">Index range: 0.0 (Optimal) to 1.0 (Critical)</div>
+        </div>
+
+        <div class="kpi-card">
+          <div class="kpi-header">
+            <span class="kpi-title">Water Quota Allocated</span>
+            <span class="kpi-icon">🚰</span>
+          </div>
+          <div class="kpi-body">
+            <span id="kpiWaterAllocated" class="kpi-number">—</span>
+            <span class="kpi-unit">Liters</span>
+          </div>
+          <div class="kpi-footer">
+            <div class="progress-bar-wrap">
+              <div id="quotaProgressBar" class="progress-bar" style="width: 0%;"></div>
+            </div>
+            <span id="kpiWaterPercent" class="progress-label">0% of regional reservoir</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 1 Charts -->
+      <div class="charts-row">
+        <div class="chart-card">
+          <div class="chart-header">
+            <h3>Crop Stress Risk Distribution</h3>
+            <span class="chart-subtitle">Classified by Random Forest Agronomic Model</span>
+          </div>
+          <div class="chart-container donut-wrap">
+            <canvas id="riskChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card wide-chart">
+          <div class="chart-header">
+            <h3>Water Allocation by Farmer Plot</h3>
+            <span class="chart-subtitle">Prioritized Liters vs. Plot Area (Acres)</span>
+          </div>
+          <div class="chart-container">
+            <canvas id="allocationChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: Farmer Plot Ledger & Priority Allocation -->
+    <section class="dashboard-section">
+      <div class="section-header ledger-header">
+        <div>
+          <div class="section-title-wrap">
+            <span class="section-num">02</span>
+            <h2>Farmer Plot Ledger & Priority Allocation</h2>
+          </div>
+          <p class="section-desc">Plot-level physiological stress predictions, priority ranking, and individual water allocations.</p>
+        </div>
+        <button id="openAddPlotModalBtn" class="btn btn-primary">
+          <span>➕</span> Register New Plot
+        </button>
+      </div>
+
+      <!-- Table Card -->
+      <div class="table-card">
+        <div class="table-responsive">
+          <table class="data-table" id="plotsTable">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Plot Code</th>
+                <th>Farmer Name</th>
+                <th>Crop Type</th>
+                <th>Stage</th>
+                <th>Area (Ac)</th>
+                <th>Blended Moisture</th>
+                <th>Predicted CSI</th>
+                <th>Risk Level</th>
+                <th>Priority Score</th>
+                <th>Allocated Water</th>
+                <th>Primary Stress Driver</th>
+              </tr>
+            </thead>
+            <tbody id="plotsTableBody">
+              <tr>
+                <td colspan="12" class="table-loading">Loading plots...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: 14-Day Weather Forecast & Future Crop Suitability -->
+    <section class="dashboard-section">
+      <div class="section-header">
+        <div class="section-title-wrap">
+          <span class="section-num">03</span>
+          <h2>14-Day Weather Forecast & Future Crop Suitability</h2>
+        </div>
+        <p class="section-desc">Projected atmospheric conditions and model-evaluated optimal crops for the upcoming planting cycle.</p>
+      </div>
+
+      <!-- 14-Day Forecast Chart Card -->
+      <div class="forecast-section-grid">
+        <div class="chart-card forecast-chart-card">
+          <div class="chart-header">
+            <div>
+              <h3>Open-Meteo 14-Day Climate Projection</h3>
+              <span class="chart-subtitle">Daily Projected Max Temperature (°C), Precipitation (mm), and ET0 (mm)</span>
+            </div>
+            <div class="forecast-pills" id="forecastPills">
+              <!-- Dynamically populated stats -->
+            </div>
+          </div>
+          <div class="chart-container forecast-container">
+            <canvas id="forecastChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Top 5 Future Suitable Crops -->
+        <div class="future-crops-card">
+          <div class="chart-header">
+            <h3>Top 5 Recommended Crops (Next Season)</h3>
+            <span class="chart-subtitle">Simulated physiological suitability for this region's climate & soil</span>
+          </div>
+          <div id="futureCropsList" class="future-crops-list">
+            <div class="loading-state">Evaluating future crop suitability...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Add Plot Modal -->
+  <div id="addPlotModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Register New Farmer Plot</h3>
+        <button id="closeModalBtn" class="close-btn">&times;</button>
+      </div>
+      <form id="addPlotForm" class="modal-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="plotCode">Plot Code *</label>
+            <input type="text" id="plotCode" required placeholder="e.g. NZB-P10" />
+          </div>
+          <div class="form-group">
+            <label for="farmerName">Farmer Name *</label>
+            <input type="text" id="farmerName" required placeholder="e.g. Suresh Reddy" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="cropType">Crop Type *</label>
+            <select id="cropType" required>
+              <option value="Rice">Rice</option>
+              <option value="Cotton">Cotton</option>
+              <option value="Maize">Maize</option>
+              <option value="Soybean">Soybean</option>
+              <option value="Groundnut">Groundnut</option>
+              <option value="Chilli_Export">Chilli (Export)</option>
+              <option value="Turmeric">Turmeric</option>
+              <option value="Gherkins">Gherkins</option>
+              <option value="Dragon_Fruit">Dragon Fruit</option>
+              <option value="Pomegranate">Pomegranate</option>
+              <option value="Avocado">Avocado</option>
+              <option value="Quinoa">Quinoa</option>
+              <option value="Bell_Pepper">Bell Pepper</option>
+              <option value="Guava_Export">Guava (Export)</option>
+              <option value="Okra_Export">Okra (Export)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="growthStage">Growth Stage *</label>
+            <select id="growthStage" required>
+              <option value="Initial">Initial</option>
+              <option value="Development">Development</option>
+              <option value="Mid_Season" selected>Mid Season</option>
+              <option value="Late_Season">Late Season</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="areaAcres">Area (Acres) *</label>
+            <input type="number" id="areaAcres" required step="0.1" min="0.1" max="100.0" value="2.0" />
+          </div>
+          <div class="form-group">
+            <label for="soilMoistureRoot">Root Soil Moisture (7-28cm) *</label>
+            <input type="number" id="soilMoistureRoot" required step="0.01" min="0.05" max="0.95" value="0.38" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="soilMoistureTop">Topsoil Moisture (0-7cm) *</label>
+            <input type="number" id="soilMoistureTop" required step="0.01" min="0.05" max="0.95" value="0.35" />
+          </div>
+          <div class="form-group">
+            <label for="soilMoistureProf">Profile Moisture (28-100cm) *</label>
+            <input type="number" id="soilMoistureProf" required step="0.01" min="0.05" max="0.95" value="0.42" />
+          </div>
+        </div>
+
+        <div id="formAlert" class="form-alert" style="display: none;"></div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancelModalBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="submitPlotBtn" class="btn btn-primary">
+            <span class="btn-text">Save & Recalculate</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <footer class="app-footer">
+    <p>AgriStress Regional Platform • Powered by Open-Meteo API, Scikit-Learn Random Forest Regressor & Classifier</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
