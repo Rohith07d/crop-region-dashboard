@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from db import db_manager
-from weather_service import fetch_live_weather_and_soil, build_api_url
+from weather_service import fetch_live_weather_and_soil
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -39,6 +39,8 @@ STAGE_WEIGHTS = {
     "Late_Season": 0.35,
 }
 
+LITERS_PER_MM_ACRE = 4046.86
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,9 +49,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Regional Crop & Water Intelligence API",
-    description="Live Regional Agricultural Monitoring, FAO-56 Stress Modeling & Water Allocation",
-    version="2.1.0",
+    title="Farmer Water & Crop Allocation Tool",
+    description="Interactive Live Agronomic Water Allocation & FAO-56 Stress Modeling for AP & Telangana Farmers",
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -62,35 +64,28 @@ app.add_middleware(
 
 
 # -----------------------------------------------------------------------------
-# Pydantic Schemas
+# Strict Domain Validation Schemas
 # -----------------------------------------------------------------------------
 GrowthStageType = Literal["Initial", "Development", "Mid_Season", "Late_Season"]
 SoilTypeName = Literal["Black_Clay", "Red_Sandy", "Alluvial_Loam"]
 
-class CreatePlotRequest(BaseModel):
-    plot_code: str = Field(..., min_length=2, max_length=30, example="NZB-P99")
-    farmer_name: str = Field(..., min_length=2, max_length=100, example="Kishan Rao")
-    crop_type: str = Field(..., example="Rice")
+class FarmerPlotItem(BaseModel):
+    plot_id: str = Field(..., min_length=1, max_length=50, example="Plot_1")
+    crop_type: str = Field(..., example="Cotton")
     growth_stage: GrowthStageType = "Mid_Season"
-    area_acres: float = Field(..., gt=0.0, le=1000.0, example=2.5)
-    soil_moisture_top: float = Field(..., ge=0.0, le=1.0, example=0.38)
-    soil_moisture_root: float = Field(..., ge=0.0, le=1.0, example=0.42)
-    soil_moisture_prof: float = Field(..., ge=0.0, le=1.0, example=0.46)
-    prev_soil_moisture_root: Optional[float] = Field(None, ge=0.0, le=1.0, example=0.40)
+    area_acres: float = Field(..., gt=0.0, le=100.0, example=2.0)
+    custom_soil_moisture: Optional[float] = Field(None, ge=0.05, le=0.95, example=0.38)
 
 
-class CreateRegionRequest(BaseModel):
-    region_name: str = Field(..., min_length=2, max_length=100, example="Kurnool Seed Hub")
-    association_name: str = Field(..., min_length=2, max_length=150, example="Kurnool Progressive Farmers Federation")
-    state: str = Field(..., min_length=2, max_length=50, example="Andhra Pradesh")
-    latitude: float = Field(..., ge=-90.0, le=90.0, example=15.82)
-    longitude: float = Field(..., ge=-180.0, le=180.0, example=78.03)
-    soil_type: SoilTypeName = "Black_Clay"
-    available_water_liters: float = Field(500000.0, gt=0.0, example=600000.0)
+class SimulateAllocationRequest(BaseModel):
+    cluster_name: str = Field(..., min_length=2, example="Shadnagar Ayacut Cluster")
+    available_water_liters: float = Field(..., ge=1000.0, le=5000000.0, example=50000.0)
+    water_source_type: Optional[str] = "Borewell"
+    plots: List[FarmerPlotItem] = Field(..., min_length=1)
 
 
 # -----------------------------------------------------------------------------
-# Agronomic ML Inference Helpers
+# Agronomic ML Inference Helpers (with Strict Physical Clamping)
 # -----------------------------------------------------------------------------
 def run_model_inference(
     crop_type: str,
@@ -121,27 +116,41 @@ def run_model_inference(
     temp_max_tol = traits["temp_max_tol"]
     root_depth = traits["root_depth"]
 
-    t_avg = (temp_max + temp_min) / 2.0
-    es = 0.6108 * np.exp((17.27 * t_avg) / (t_avg + 237.3))
-    vpd = float(es * (1.0 - (humidity / 100.0)))
+    # Strict clamping to training distribution to prevent out-of-domain extrapolation
+    c_sm_top = float(np.clip(sm_top, 0.05, 0.95))
+    c_sm_root = float(np.clip(sm_root, 0.05, 0.95))
+    c_sm_prof = float(np.clip(sm_prof, 0.05, 0.95))
+    c_prev_sm = float(np.clip(prev_sm_root, 0.05, 0.95))
 
-    moisture_margin = sm_root - crit_sm
-    heat_excess = temp_max - temp_max_tol
-    temp_range = temp_max - temp_min
-    net_water_balance = rainfall_10d - et0_10d
-    soil_moisture_delta = sm_root - prev_sm_root
+    c_tmax = float(np.clip(temp_max, 15.0, 50.0))
+    c_tmin = float(np.clip(temp_min, 5.0, 40.0))
+    c_humidity = float(np.clip(humidity, 10.0, 100.0))
+    c_wind = float(np.clip(wind_speed, 0.1, 15.0))
+    c_solar = float(np.clip(solar_radiation, 5.0, 35.0))
+    c_rain = float(np.clip(rainfall_10d, 0.0, 300.0))
+    c_et0 = float(np.clip(et0_10d, 5.0, 100.0))
+
+    t_avg = (c_tmax + c_tmin) / 2.0
+    es = 0.6108 * np.exp((17.27 * t_avg) / (t_avg + 237.3))
+    vpd = float(np.clip(es * (1.0 - (c_humidity / 100.0)), 0.0, 6.0))
+
+    moisture_margin = c_sm_root - crit_sm
+    heat_excess = c_tmax - temp_max_tol
+    temp_range = c_tmax - c_tmin
+    net_water_balance = c_rain - c_et0
+    soil_moisture_delta = float(np.clip(c_sm_root - c_prev_sm, -0.15, 0.15))
 
     row = {
-        "soil_moisture_top": sm_top,
-        "soil_moisture_root": sm_root,
-        "soil_moisture_prof": sm_prof,
-        "temp_max": temp_max,
-        "temp_min": temp_min,
-        "humidity": humidity,
-        "wind_speed": wind_speed,
-        "solar_radiation": solar_radiation,
-        "rainfall_10d": rainfall_10d,
-        "et0_10d": et0_10d,
+        "soil_moisture_top": c_sm_top,
+        "soil_moisture_root": c_sm_root,
+        "soil_moisture_prof": c_sm_prof,
+        "temp_max": c_tmax,
+        "temp_min": c_tmin,
+        "humidity": c_humidity,
+        "wind_speed": c_wind,
+        "solar_radiation": c_solar,
+        "rainfall_10d": c_rain,
+        "et0_10d": c_et0,
         "kc": kc,
         "crit_sm": crit_sm,
         "temp_max_tol": temp_max_tol,
@@ -151,7 +160,7 @@ def run_model_inference(
         "net_water_balance": net_water_balance,
         "heat_excess": heat_excess,
         "moisture_margin": moisture_margin,
-        "prev_soil_moisture_root": prev_sm_root,
+        "prev_soil_moisture_root": c_prev_sm,
         "soil_moisture_delta": soil_moisture_delta,
         "growth_stage_encoded": ARTIFACTS["stage_order"][growth_stage],
         "soil_type_Alluvial_Loam": 1 if soil_type == "Alluvial_Loam" else 0,
@@ -167,18 +176,18 @@ def run_model_inference(
     if moisture_margin < -0.05:
         drivers.append(f"Root moisture severely below threshold by {abs(moisture_margin):.2f}")
     elif moisture_margin < 0:
-        drivers.append(f"Root moisture slightly below critical limit ({abs(moisture_margin):.2f})")
+        drivers.append(f"Root moisture below critical limit ({abs(moisture_margin):.2f})")
 
-    if heat_excess > 3.0:
+    if heat_excess > 2.5:
         drivers.append(f"Severe thermal stress (+{heat_excess:.1f}°C above tolerance)")
     elif heat_excess > 0:
-        drivers.append(f"Mild heat stress (+{heat_excess:.1f}°C)")
+        drivers.append(f"Mild heat excess (+{heat_excess:.1f}°C)")
 
-    if vpd > 2.8:
-        drivers.append(f"High atmospheric evaporative pull (VPD {vpd:.2f} kPa)")
+    if vpd > 2.6:
+        drivers.append(f"High atmospheric drying demand (VPD {vpd:.2f} kPa)")
 
-    if net_water_balance < -40.0:
-        drivers.append("Cumulative 10d water deficit (>40mm net loss)")
+    if net_water_balance < -35.0:
+        drivers.append(f"10d net moisture deficit ({net_water_balance:.1f} mm)")
 
     if not drivers:
         drivers.append("Optimal physiological & moisture conditions")
@@ -192,6 +201,9 @@ def run_model_inference(
         "all_drivers": drivers,
         "crit_sm": crit_sm,
         "temp_max_tol": temp_max_tol,
+        "kc": kc,
+        "root_depth": root_depth,
+        "effective_sm_root": round(c_sm_root, 3),
     }
 
 
@@ -201,7 +213,7 @@ def compute_priority_score(csi: float, growth_stage: str) -> float:
 
 
 # -----------------------------------------------------------------------------
-# Static files and root route
+# Static Files & Root
 # -----------------------------------------------------------------------------
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -211,59 +223,43 @@ def get_index():
     index_file = os.path.join(STATIC_DIR, "index.html")
     if os.path.exists(index_file):
         return FileResponse(index_file)
-    return {"message": "Regional Crop & Water Intelligence API is running."}
+    return {"message": "Farmer Water & Crop Allocation Tool is running."}
 
 
 # -----------------------------------------------------------------------------
-# Regional API Endpoints
+# Functional API Endpoints
 # -----------------------------------------------------------------------------
 @app.get("/api/regions")
-def get_regions(state: Optional[str] = Query(None, description="Filter regions by State")):
-    """Returns list of registered agricultural regions, with optional state filtering."""
+def get_regions(state: Optional[str] = Query(None, description="Filter clusters by State")):
+    """Returns the list of localized Telangana & Andhra Pradesh farm clusters."""
     regions = db_manager.get_all_regions(state_filter=state)
     all_regions = db_manager.get_all_regions()
     unique_states = sorted(list(set(r["state"] for r in all_regions)))
+    crops_list = list(ARTIFACTS.get("crop_registry", {}).keys())
     return {
         "status": "success",
         "database_backend": db_manager.db_type,
         "count": len(regions),
         "states": unique_states,
         "regions": regions,
-    }
-
-
-@app.post("/api/regions", status_code=status.HTTP_201_CREATED)
-def create_region(req: CreateRegionRequest):
-    """Allows a farmer association or cooperative to register a new region."""
-    existing = db_manager.get_region_by_name(req.region_name)
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Region '{req.region_name}' is already registered.",
-        )
-    created = db_manager.add_region(req.model_dump())
-    return {
-        "status": "success",
-        "message": f"Region '{req.region_name}' registered successfully for association '{req.association_name}'",
-        "region": created,
+        "supported_crops": crops_list,
     }
 
 
 @app.get("/api/region/{region_name}/dashboard")
-def get_region_dashboard(region_name: str):
-    """Main dashboard endpoint: Combines live Open-Meteo weather and soil data,
+def get_cluster_dashboard(region_name: str):
+    """Initial dashboard load: fetches farm cluster metadata, live Open-Meteo
 
-    fetches farmer plots, calculates blended physiological stress, computes fair
-    water allocations, and aggregates regional summary KPIs.
+    weather, and pre-populated default farmer plots.
     """
     region = db_manager.get_region_by_name(region_name)
     if not region:
         raise HTTPException(
             status_code=404,
-            detail=f"Region '{region_name}' not found. Available: {[r['region_name'] for r in db_manager.get_all_regions()]}",
+            detail=f"Farm Cluster '{region_name}' not found.",
         )
 
-    # 1. Fetch live Open-Meteo weather & satellite soil moisture (with DB fallback)
+    # Fetch live weather with real latency
     weather = fetch_live_weather_and_soil(
         latitude=float(region["latitude"]),
         longitude=float(region["longitude"]),
@@ -276,102 +272,34 @@ def get_region_dashboard(region_name: str):
         except Exception:
             pass
 
-    # 2. Fetch all registered farmer plots
+    # Retrieve pre-populated cluster plots
     raw_plots = db_manager.get_plots_for_region(region["id"])
-
-    evaluated_plots = []
-    min_csi_threshold = 0.10
-
+    prefill_plots = []
     for p in raw_plots:
-        sm_top_blend = float(np.clip(0.60 * weather["soil_moisture_top"] + 0.40 * float(p["soil_moisture_top"]), 0.05, 0.95))
-        sm_root_blend = float(np.clip(0.60 * weather["soil_moisture_root"] + 0.40 * float(p["soil_moisture_root"]), 0.05, 0.95))
-        sm_prof_blend = float(np.clip(0.60 * weather["soil_moisture_prof"] + 0.40 * float(p["soil_moisture_prof"]), 0.05, 0.95))
-
-        plot_prev_raw = p["prev_soil_moisture_root"] if p.get("prev_soil_moisture_root") is not None else p["soil_moisture_root"]
-        sm_prev_blend = float(np.clip(0.60 * weather["prev_soil_moisture_root"] + 0.40 * float(plot_prev_raw), 0.05, 0.95))
-
-        inf = run_model_inference(
-            crop_type=p["crop_type"],
-            growth_stage=p["growth_stage"],
-            soil_type=region["soil_type"],
-            sm_top=sm_top_blend,
-            sm_root=sm_root_blend,
-            sm_prof=sm_prof_blend,
-            prev_sm_root=sm_prev_blend,
-            temp_max=weather["temp_max"],
-            temp_min=weather["temp_min"],
-            humidity=weather["humidity"],
-            wind_speed=weather["wind_speed"],
-            solar_radiation=weather["solar_radiation"],
-            rainfall_10d=weather["rainfall_10d"],
-            et0_10d=weather["et0_10d"],
-        )
-
-        p_score = compute_priority_score(inf["predicted_csi"], p["growth_stage"])
-        demand_weight = (p_score * float(p["area_acres"])) if inf["predicted_csi"] >= min_csi_threshold else 0.0
-
-        evaluated_plots.append({
-            "id": p["id"],
-            "plot_code": p["plot_code"],
+        prefill_plots.append({
+            "plot_id": p["plot_code"],
             "farmer_name": p["farmer_name"],
             "crop_type": p["crop_type"],
-            "crop_category": inf["crop_category"],
             "growth_stage": p["growth_stage"],
-            "area_acres": round(float(p["area_acres"]), 2),
-            "soil_moisture_root": round(sm_root_blend, 3),
-            "soil_moisture_top": round(sm_top_blend, 3),
-            "soil_moisture_prof": round(sm_prof_blend, 3),
-            "predicted_csi": inf["predicted_csi"],
-            "risk_level": inf["risk_level"],
-            "priority_score": p_score,
-            "demand_weight": demand_weight,
-            "primary_driver": inf["primary_driver"],
-            "all_drivers": inf["all_drivers"],
+            "area_acres": float(p["area_acres"]),
+            "custom_soil_moisture": float(p["soil_moisture_root"]),
         })
 
-    # 3. Water Allocation Calculation
-    available_water = float(region["available_water_liters"])
-    total_demand = sum(p["demand_weight"] for p in evaluated_plots)
-
-    for p in evaluated_plots:
-        if total_demand > 0 and p["demand_weight"] > 0:
-            share = p["demand_weight"] / total_demand
-            p["water_share_pct"] = round(share * 100.0, 1)
-            p["allocated_liters"] = round(available_water * share, 1)
-        else:
-            p["water_share_pct"] = 0.0
-            p["allocated_liters"] = 0.0
-        del p["demand_weight"]
-
-    evaluated_plots.sort(key=lambda x: (x["priority_score"], x["predicted_csi"]), reverse=True)
-    for idx, p in enumerate(evaluated_plots, start=1):
-        p["priority_rank"] = idx
-
-    # 4. Regional KPIs
-    total_acreage = round(sum(p["area_acres"] for p in evaluated_plots), 1)
-    total_plots = len(evaluated_plots)
-    avg_csi = round(float(np.mean([p["predicted_csi"] for p in evaluated_plots])), 3) if evaluated_plots else 0.0
-    allocated_water_sum = round(sum(p["allocated_liters"] for p in evaluated_plots), 1)
-    unallocated_water = round(max(0.0, available_water - allocated_water_sum), 1)
-
-    risk_counts = {"Low": 0, "Moderate": 0, "High": 0, "Critical": 0}
-    crop_counts: Dict[str, int] = {}
-    for p in evaluated_plots:
-        risk_counts[p["risk_level"]] = risk_counts.get(p["risk_level"], 0) + 1
-        crop_counts[p["crop_type"]] = crop_counts.get(p["crop_type"], 0) + 1
+    # Default farmer available water for initial planner view (50,000 L)
+    default_available_water = 50000.0
 
     return {
         "status": "success",
         "database_backend": db_manager.db_type,
-        "region": {
+        "cluster": {
             "id": region["id"],
             "region_name": region["region_name"],
-            "association_name": region.get("association_name", "Regional Agricultural Association"),
+            "association_name": region.get("association_name", "Local Farm Cluster"),
             "state": region["state"],
             "latitude": float(region["latitude"]),
             "longitude": float(region["longitude"]),
             "soil_type": region["soil_type"],
-            "available_water_liters": available_water,
+            "default_water_liters": default_available_water,
         },
         "weather": {
             "source": weather.get("source", "Live via Open-Meteo"),
@@ -387,127 +315,176 @@ def get_region_dashboard(region_name: str):
             "soil_moisture_top": weather["soil_moisture_top"],
             "soil_moisture_root": weather["soil_moisture_root"],
             "soil_moisture_prof": weather["soil_moisture_prof"],
-            "verification": weather.get("verification", {}),
+            "client_latency_ms": weather.get("verification", {}).get("client_latency_ms", 120),
+        },
+        "default_plots": prefill_plots,
+        "supported_crops": list(ARTIFACTS.get("crop_registry", {}).keys()),
+    }
+
+
+@app.post("/api/simulate-allocation")
+def simulate_farmer_allocation(req: SimulateAllocationRequest):
+    """Core Feature: Dynamically simulates crop water stress for the farmer's
+
+    chosen plots and computes optimal prioritized water allocation (in Liters and
+    mm depth) against their available supply with clear deficit/surplus feedback.
+    """
+    region = db_manager.get_region_by_name(req.cluster_name)
+    if not region:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Farm Cluster '{req.cluster_name}' not found.",
+        )
+
+    # 1. Fetch live Open-Meteo weather for this cluster's exact coordinates
+    weather = fetch_live_weather_and_soil(
+        latitude=float(region["latitude"]),
+        longitude=float(region["longitude"]),
+        fallback_data=region,
+    )
+
+    evaluated_plots = []
+    min_csi_threshold = 0.10
+
+    for idx, p in enumerate(req.plots, start=1):
+        # Determine baseline root moisture
+        baseline_sm = p.custom_soil_moisture if p.custom_soil_moisture is not None else weather["soil_moisture_root"]
+        sm_root_blend = float(np.clip(0.60 * weather["soil_moisture_root"] + 0.40 * baseline_sm, 0.05, 0.95))
+        sm_top_blend = float(np.clip(0.60 * weather["soil_moisture_top"] + 0.40 * baseline_sm, 0.05, 0.95))
+        sm_prof_blend = float(np.clip(0.60 * weather["soil_moisture_prof"] + 0.40 * (baseline_sm + 0.04), 0.05, 0.95))
+
+        # Model inference
+        inf = run_model_inference(
+            crop_type=p.crop_type,
+            growth_stage=p.growth_stage,
+            soil_type=region["soil_type"],
+            sm_top=sm_top_blend,
+            sm_root=sm_root_blend,
+            sm_prof=sm_prof_blend,
+            prev_sm_root=sm_root_blend,
+            temp_max=weather["temp_max"],
+            temp_min=weather["temp_min"],
+            humidity=weather["humidity"],
+            wind_speed=weather["wind_speed"],
+            solar_radiation=weather["solar_radiation"],
+            rainfall_10d=weather["rainfall_10d"],
+            et0_10d=weather["et0_10d"],
+        )
+
+        csi = inf["predicted_csi"]
+        p_score = compute_priority_score(csi, p.growth_stage)
+
+        # Agronomic Ideal Water Depth (mm) to relieve physiological stress
+        if csi >= min_csi_threshold:
+            ideal_depth_mm = max(6.0, round(csi * 32.0 * inf["kc"], 1))
+        else:
+            ideal_depth_mm = 0.0
+
+        ideal_liters = round(p.area_acres * LITERS_PER_MM_ACRE * ideal_depth_mm, 1)
+        demand_weight = (p_score * p.area_acres) if csi >= min_csi_threshold else 0.05
+
+        evaluated_plots.append({
+            "plot_id": p.plot_id,
+            "crop_type": p.crop_type,
+            "crop_category": inf["crop_category"],
+            "growth_stage": p.growth_stage,
+            "area_acres": round(p.area_acres, 2),
+            "blended_soil_moisture": inf["effective_sm_root"],
+            "predicted_csi": csi,
+            "risk_level": inf["risk_level"],
+            "priority_score": p_score,
+            "demand_weight": demand_weight,
+            "ideal_depth_mm": ideal_depth_mm,
+            "ideal_liters": ideal_liters,
+            "primary_driver": inf["primary_driver"],
+            "all_drivers": inf["all_drivers"],
+        })
+
+    # 2. Compute Distribution of Farmer's Available Water
+    avail_water = float(req.available_water_liters)
+    total_ideal_liters = round(sum(p["ideal_liters"] for p in evaluated_plots), 1)
+    total_demand_weight = sum(p["demand_weight"] for p in evaluated_plots)
+
+    for p in evaluated_plots:
+        if total_demand_weight > 0 and p["demand_weight"] > 0:
+            share = p["demand_weight"] / total_demand_weight
+            allocated_liters = round(avail_water * share, 1)
+            allocated_depth_mm = round(allocated_liters / (p["area_acres"] * LITERS_PER_MM_ACRE), 1)
+            p["water_share_pct"] = round(share * 100.0, 1)
+            p["allocated_liters"] = allocated_liters
+            p["allocated_depth_mm"] = allocated_depth_mm
+        else:
+            p["water_share_pct"] = 0.0
+            p["allocated_liters"] = 0.0
+            p["allocated_depth_mm"] = 0.0
+        del p["demand_weight"]
+
+    # Rank plots strictly by Priority Score descending
+    evaluated_plots.sort(key=lambda x: (x["priority_score"], x["predicted_csi"]), reverse=True)
+    for idx, p in enumerate(evaluated_plots, start=1):
+        p["priority_rank"] = idx
+
+    # 3. Water Deficit / Surplus Feedback
+    balance_liters = round(avail_water - total_ideal_liters, 1)
+    coverage_pct = round((avail_water / total_ideal_liters) * 100.0, 1) if total_ideal_liters > 0 else 100.0
+
+    if balance_liters >= 0:
+        water_status = "SURPLUS"
+        feedback_message = (
+            f"Sufficient Water Reserve: Your available supply of {avail_water:,.0f} L covers 100% of "
+            f"crop physiological stress requirements with a surplus of +{balance_liters:,.0f} L."
+        )
+    else:
+        water_status = "DEFICIT"
+        deficit = abs(balance_liters)
+        feedback_message = (
+            f"Water Deficit Warning: Available water covers {coverage_pct}% of stress demand "
+            f"({deficit:,.0f} L deficit). Water is prioritized for critical & high-risk plots."
+        )
+
+    # Summary metrics
+    total_acreage = round(sum(p["area_acres"] for p in evaluated_plots), 1)
+    total_plots = len(evaluated_plots)
+    farm_avg_csi = round(float(np.mean([p["predicted_csi"] for p in evaluated_plots])), 3) if evaluated_plots else 0.0
+
+    risk_counts = {"Low": 0, "Moderate": 0, "High": 0, "Critical": 0}
+    for p in evaluated_plots:
+        risk_counts[p["risk_level"]] = risk_counts.get(p["risk_level"], 0) + 1
+
+    return {
+        "status": "success",
+        "cluster_name": req.cluster_name,
+        "state": region["state"],
+        "soil_type": region["soil_type"],
+        "coordinates": {"latitude": float(region["latitude"]), "longitude": float(region["longitude"])},
+        "weather_summary": {
+            "source": weather.get("source", "Live via Open-Meteo"),
+            "is_live": weather.get("is_live", True),
+            "temp_max": weather["temp_max"],
+            "temp_min": weather["temp_min"],
+            "humidity": weather["humidity"],
+            "wind_speed": weather["wind_speed"],
+            "rainfall_10d": weather["rainfall_10d"],
+            "et0_10d": weather["et0_10d"],
+            "soil_moisture_root": weather["soil_moisture_root"],
+            "client_latency_ms": weather.get("verification", {}).get("client_latency_ms", 120),
+        },
+        "water_budget": {
+            "available_water_liters": avail_water,
+            "total_recommended_liters": total_ideal_liters,
+            "water_balance_liters": balance_liters,
+            "coverage_pct": coverage_pct,
+            "water_status": water_status,
+            "feedback_message": feedback_message,
+            "water_source_type": req.water_source_type or "Borewell",
         },
         "summary": {
             "total_acreage": total_acreage,
             "total_plots": total_plots,
-            "regional_avg_csi": avg_csi,
-            "available_water_liters": available_water,
-            "allocated_water_liters": allocated_water_sum,
-            "unallocated_water_liters": unallocated_water,
-            "quota_utilization_pct": round((allocated_water_sum / available_water) * 100.0, 1) if available_water > 0 else 0.0,
+            "farm_avg_csi": farm_avg_csi,
             "risk_distribution": risk_counts,
-            "crop_distribution": crop_counts,
         },
         "plots": evaluated_plots,
-    }
-
-
-@app.get("/api/region/{region_name}/verify-weather")
-def verify_region_weather(region_name: str):
-    """Explicitly verifies live weather accuracy, grid resolution, and geographic
-
-    region-specificity by comparing this region against contrasting climates.
-    """
-    region = db_manager.get_region_by_name(region_name)
-    if not region:
-        raise HTTPException(status_code=404, detail=f"Region '{region_name}' not found.")
-
-    # 1. Fetch target region live weather
-    target_lat = float(region["latitude"])
-    target_lon = float(region["longitude"])
-    target_weather = fetch_live_weather_and_soil(target_lat, target_lon, fallback_data=region)
-
-    # 2. Benchmark against 3 contrasting regions from other states/climates
-    comparison_targets = [
-        {"name": "Marwar Arid Region", "state": "Rajasthan", "lat": 26.23, "lon": 73.02, "climate": "Arid Desert"},
-        {"name": "Malwa Granary", "state": "Punjab", "lat": 30.90, "lon": 75.85, "climate": "North Alluvial"},
-        {"name": "Cauvery Delta", "state": "Tamil Nadu", "lat": 10.78, "lon": 79.13, "climate": "Coastal Delta"},
-        {"name": "Vidarbha Black Soil Belt", "state": "Maharashtra", "lat": 21.14, "lon": 79.08, "climate": "Central Plateau"},
-    ]
-    # Filter out current region if in benchmark list
-    filtered_comparisons = [c for c in comparison_targets if c["name"] != region_name][:3]
-
-    benchmarks = []
-    for c in filtered_comparisons:
-        try:
-            w = fetch_live_weather_and_soil(c["lat"], c["lon"])
-            benchmarks.append({
-                "region_name": c["name"],
-                "state": c["state"],
-                "climate_type": c["climate"],
-                "coordinates": f"{c['lat']}°N, {c['lon']}°E",
-                "temp_max": w["temp_max"],
-                "humidity": w["humidity"],
-                "rainfall_10d": w["rainfall_10d"],
-                "soil_moisture_root": w["soil_moisture_root"],
-                "is_live": w.get("is_live", True),
-            })
-        except Exception:
-            pass
-
-    return {
-        "status": "success",
-        "verified_region": {
-            "region_name": region["region_name"],
-            "association_name": region.get("association_name", "Regional Agricultural Association"),
-            "state": region["state"],
-            "coordinates": {"latitude": target_lat, "longitude": target_lon},
-            "soil_type": region["soil_type"],
-        },
-        "live_accuracy_audit": {
-            "data_source": "Open-Meteo High-Resolution Weather & Land Reanalysis API",
-            "model_grid_resolution": "11 km (ECMWF IFS / Land Data Assimilation System)",
-            "elevation_m": target_weather.get("verification", {}).get("elevation_m"),
-            "matched_grid_cell": target_weather.get("verification", {}).get("matched_grid_cell"),
-            "api_endpoint_url": build_api_url(target_lat, target_lon),
-            "generation_time_ms": target_weather.get("verification", {}).get("generation_time_ms"),
-            "client_latency_ms": target_weather.get("verification", {}).get("client_latency_ms"),
-            "queried_at_utc": target_weather.get("verification", {}).get("queried_at_utc"),
-            "live_status": "ACCURACY_VERIFIED_REGION_SPECIFIC",
-        },
-        "current_measurements": {
-            "temp_max_c": target_weather["temp_max"],
-            "temp_min_c": target_weather["temp_min"],
-            "humidity_pct": target_weather["humidity"],
-            "wind_speed_ms": target_weather["wind_speed"],
-            "solar_radiation_mj": target_weather["solar_radiation"],
-            "rainfall_10d_mm": target_weather["rainfall_10d"],
-            "et0_10d_mm": target_weather["et0_10d"],
-            "satellite_soil_moisture": {
-                "topsoil_0_to_7cm": target_weather["soil_moisture_top"],
-                "rootzone_7_to_28cm": target_weather["soil_moisture_root"],
-                "deep_profile_28_to_100cm": target_weather["soil_moisture_prof"],
-            }
-        },
-        "cross_region_specificity_contrast": benchmarks,
-    }
-
-
-@app.post("/api/region/{region_name}/plots", status_code=status.HTTP_201_CREATED)
-def add_plot_to_region(region_name: str, req: CreatePlotRequest):
-    """Allows an agronomist or farmer to add a new plot to a region."""
-    region = db_manager.get_region_by_name(region_name)
-    if not region:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Region '{region_name}' not found.",
-        )
-
-    crop_registry = ARTIFACTS.get("crop_registry", {})
-    if crop_registry and req.crop_type not in crop_registry:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown crop_type '{req.crop_type}'. Valid crops: {list(crop_registry.keys())}",
-        )
-
-    plot_dict = req.model_dump()
-    created = db_manager.add_plot(region["id"], plot_dict)
-    return {
-        "status": "success",
-        "message": f"Plot '{req.plot_code}' registered successfully for region '{region_name}'",
-        "plot": created,
     }
 
 
@@ -515,13 +492,13 @@ def add_plot_to_region(region_name: str, req: CreatePlotRequest):
 def get_future_crops_suitability(region_name: str):
     """Evaluates next-season crop suitability over the 14-day Open-Meteo weather
 
-    forecast and ranks the Top 5 Recommended Crops.
+    forecast and ranks the Top 5 Recommended Crops from the 15 supported crops.
     """
     region = db_manager.get_region_by_name(region_name)
     if not region:
         raise HTTPException(
             status_code=404,
-            detail=f"Region '{region_name}' not found.",
+            detail=f"Farm Cluster '{region_name}' not found.",
         )
 
     weather = fetch_live_weather_and_soil(
@@ -540,7 +517,7 @@ def get_future_crops_suitability(region_name: str):
         sum_future_rain = weather["rainfall_10d"]
         sum_future_et0 = weather["et0_10d"]
 
-    baseline_sm = 0.36 if region["soil_type"] == "Black_Clay" else (0.32 if region["soil_type"] == "Alluvial_Loam" else 0.28)
+    baseline_sm = 0.38 if region["soil_type"] == "Black_Clay" else (0.34 if region["soil_type"] == "Alluvial_Loam" else 0.30)
     net_bal = sum_future_rain - sum_future_et0
 
     crop_evaluations = []
@@ -569,12 +546,12 @@ def get_future_crops_suitability(region_name: str):
 
         reasons = []
         if traits["temp_max_tol"] >= avg_future_tmax:
-            reasons.append(f"High heat tolerance ({traits['temp_max_tol']}°C > forecast {avg_future_tmax:.1f}°C)")
+            reasons.append(f"High thermal tolerance ({traits['temp_max_tol']}°C > forecast {avg_future_tmax:.1f}°C)")
         else:
             reasons.append(f"Sensitive to projected heat (+{avg_future_tmax - traits['temp_max_tol']:.1f}°C excess)")
 
         if traits["crit_sm"] <= baseline_sm:
-            reasons.append(f"Thrives within region's {region['soil_type']} moisture holding capacity")
+            reasons.append(f"Matches soil water capacity ({region['soil_type']})")
         else:
             reasons.append(f"Requires supplemental irrigation (crit moisture {traits['crit_sm']:.2f})")
 
@@ -593,7 +570,7 @@ def get_future_crops_suitability(region_name: str):
 
     return {
         "status": "success",
-        "region_name": region_name,
+        "cluster_name": region_name,
         "soil_type": region["soil_type"],
         "projected_metrics": {
             "avg_future_temp_max": round(avg_future_tmax, 1),

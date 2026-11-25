@@ -23,7 +23,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_NAME = os.getenv("DB_NAME", "crop_regional_db")
 SQLITE_DB_PATH = os.path.join(os.path.dirname(__file__), "crop_regional_db.sqlite")
 
-# Seed data references
+# Seed data references (8 Localized AP & Telangana Farm Clusters)
 from seed_data import REGIONS_DATA, PLOTS_DATA
 
 
@@ -47,7 +47,6 @@ class DatabaseManager:
 
     def _test_and_init(self):
         try:
-            # Test connecting to MySQL server
             conn = self._get_mysql_connection(create_db=True)
             cursor = conn.cursor()
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
@@ -55,15 +54,11 @@ class DatabaseManager:
             cursor.close()
             conn.close()
 
-            # Connection succeeded, use MySQL
             self.use_mysql = True
             self.db_type = "MySQL"
-            print(f"[DB] Successfully connected to MySQL at {DB_HOST}:{DB_PORT}/{DB_NAME}")
+            print(f"[DB] Connected to MySQL at {DB_HOST}:{DB_PORT}/{DB_NAME}")
             self._ensure_mysql_schema_and_seed()
         except Exception as exc:
-            print(f"[DB] MySQL connection notice: {exc}")
-            print(f"[DB] Active fallback enabled: Using local persistent SQLite store ({SQLITE_DB_PATH}).")
-            print(f"[DB] (To use MySQL, set DB_PASSWORD in .env and run seed_data.py).")
             self.use_mysql = False
             self.db_type = "SQLite"
             self._ensure_sqlite_schema_and_seed()
@@ -81,14 +76,12 @@ class DatabaseManager:
                     cursor.execute(stmt)
             conn.commit()
 
-        # Check column association_name
-        try:
-            cursor.execute("SELECT association_name FROM regions LIMIT 1")
-        except Exception:
-            cursor.execute("ALTER TABLE regions ADD COLUMN association_name VARCHAR(150) NOT NULL DEFAULT 'Regional Agricultural Association'")
-            conn.commit()
+        # Check and sync valid farm cluster names
+        target_names = [r["region_name"] for r in REGIONS_DATA]
+        format_strings = ','.join(['%s'] * len(target_names))
+        cursor.execute(f"DELETE FROM regions WHERE region_name NOT IN ({format_strings})", tuple(target_names))
+        conn.commit()
 
-        # Seed or update all regions
         for r in REGIONS_DATA:
             cursor.execute(
                 """
@@ -105,7 +98,7 @@ class DatabaseManager:
                     available_water_liters=VALUES(available_water_liters)
                 """,
                 (
-                    r["region_name"], r.get("association_name", "Regional Agricultural Association"),
+                    r["region_name"], r.get("association_name", "Local Farm Cluster"),
                     r["state"], r["latitude"], r["longitude"], r["soil_type"],
                     r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
                     r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
@@ -149,7 +142,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS regions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_name TEXT NOT NULL UNIQUE,
-                association_name TEXT DEFAULT 'Regional Agricultural Association',
+                association_name TEXT DEFAULT 'Local Farm Cluster',
                 state TEXT NOT NULL,
                 latitude REAL NOT NULL,
                 longitude REAL NOT NULL,
@@ -187,15 +180,14 @@ class DatabaseManager:
         )
         conn.commit()
 
-        # Migration: ensure association_name column exists
-        cursor.execute("PRAGMA table_info(regions);")
-        columns = [row[1] for row in cursor.fetchall()]
-        if "association_name" not in columns:
-            cursor.execute("ALTER TABLE regions ADD COLUMN association_name TEXT DEFAULT 'Regional Agricultural Association';")
-            conn.commit()
+        # Remove old deprecated regions not in the 8 target farm clusters
+        target_names = [r["region_name"] for r in REGIONS_DATA]
+        placeholders = ','.join(['?'] * len(target_names))
+        cursor.execute(f"DELETE FROM regions WHERE region_name NOT IN ({placeholders})", tuple(target_names))
+        cursor.execute("DELETE FROM region_plots WHERE region_id NOT IN (SELECT id FROM regions);")
+        conn.commit()
 
-        # Seed or sync all 12 regions and plots
-        print(f"[DB] Syncing {len(REGIONS_DATA)} agricultural regions and plots into SQLite...")
+        # Insert / Sync the 8 localized AP & Telangana farm clusters
         for r in REGIONS_DATA:
             cursor.execute(
                 """
@@ -212,7 +204,7 @@ class DatabaseManager:
                     available_water_liters=excluded.available_water_liters
                 """,
                 (
-                    r["region_name"], r.get("association_name", "Regional Agricultural Association"),
+                    r["region_name"], r.get("association_name", "Local Farm Cluster"),
                     r["state"], r["latitude"], r["longitude"], r["soil_type"],
                     r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
                     r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
@@ -251,7 +243,7 @@ class DatabaseManager:
     def get_all_regions(self, state_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         query = "SELECT * FROM regions"
         params = []
-        if state_filter and state_filter.lower() != "all":
+        if state_filter and state_filter.lower() not in ["all", "all states"]:
             query += " WHERE state = %s" if self.use_mysql else " WHERE state = ?"
             params.append(state_filter)
         query += " ORDER BY state ASC, region_name ASC"
@@ -292,58 +284,6 @@ class DatabaseManager:
             cursor.close()
             conn.close()
             return dict(row) if row else None
-
-    def add_region(self, region_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Allows a farmer association or cooperative to register a new region."""
-        fields = [
-            "region_name", "association_name", "state", "latitude", "longitude",
-            "soil_type", "available_water_liters", "temp_max", "temp_min", "humidity",
-            "wind_speed", "solar_radiation", "rainfall_10d", "et0_10d"
-        ]
-        values = [
-            region_data["region_name"],
-            region_data.get("association_name", f"{region_data['region_name']} Farmers Association"),
-            region_data["state"],
-            float(region_data["latitude"]),
-            float(region_data["longitude"]),
-            region_data["soil_type"],
-            float(region_data.get("available_water_liters", 500000.0)),
-            float(region_data.get("temp_max", 34.0)),
-            float(region_data.get("temp_min", 24.0)),
-            float(region_data.get("humidity", 55.0)),
-            float(region_data.get("wind_speed", 2.5)),
-            float(region_data.get("solar_radiation", 18.0)),
-            float(region_data.get("rainfall_10d", 5.0)),
-            float(region_data.get("et0_10d", 45.0)),
-        ]
-
-        if self.use_mysql:
-            conn = self._get_mysql_connection()
-            cursor = conn.cursor(dictionary=True)
-            cols = ", ".join(fields)
-            placeholders = ", ".join(["%s"] * len(fields))
-            cursor.execute(f"INSERT INTO regions ({cols}) VALUES ({placeholders})", tuple(values))
-            conn.commit()
-            new_id = cursor.lastrowid
-            cursor.execute("SELECT * FROM regions WHERE id = %s", (new_id,))
-            created = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            return created
-        else:
-            conn = sqlite3.connect(SQLITE_DB_PATH)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            cols = ", ".join(fields)
-            placeholders = ", ".join(["?"] * len(fields))
-            cursor.execute(f"INSERT INTO regions ({cols}) VALUES ({placeholders})", tuple(values))
-            conn.commit()
-            new_id = cursor.lastrowid
-            cursor.execute("SELECT * FROM regions WHERE id = ?", (new_id,))
-            created = dict(cursor.fetchone())
-            cursor.close()
-            conn.close()
-            return created
 
     def get_plots_for_region(self, region_id: int) -> List[Dict[str, Any]]:
         if self.use_mysql:

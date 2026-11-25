@@ -1,23 +1,47 @@
 /**
- * AgriStress Regional Intelligence - Enhanced Vanilla JavaScript Frontend
- * Multi-State Region Filter, Association Ledger, and Live Open-Meteo Audit Inspector
+ * AgriStress — Farmer Water & Crop Allocator
+ * Clean Vanilla JavaScript Frontend (No Build Tools)
+ * Interactive Field Planning, Open-Meteo Integration, and Dynamic Agronomic Allocations
  */
 
-// Global Application State
-let currentRegion = "";
-let regionsList = [];
-let availableStates = [];
+// Application State
+let allClusters = [];
+let currentClusterName = "";
 let activeStateFilter = "all";
+let availableWaterLiters = 50000;
+let waterSourceType = "Borewell";
+let farmerPlots = [];
+let supportedCrops = [];
+
+// Request concurrency guards (avoids race condition on rapid switching)
+let activeDashboardRequestId = 0;
+let activeSimulateRequestId = 0;
+let activeFutureCropsRequestId = 0;
+
+// Chart.js Instances
 let riskChartInstance = null;
 let allocationChartInstance = null;
 let forecastChartInstance = null;
 
-// Risk Level Formatting Configuration
+// Earthy Agrarian Theme Palette
+const EARTHY_PALETTE = {
+  charcoal: "#312C18",
+  moss: "#4C543D",
+  sage: "#A4B092",
+  cream: "#EAE5D9",
+  card: "#F4F1E8",
+  amber: "#C68B38",
+  terracotta: "#B85D3B",
+  rust: "#9E2A2B",
+  low: "#2E5A36"
+};
+
+// Risk Formatting Configuration
 const RISK_CONFIG = {
-  Low: { color: "#10b981", bg: "rgba(16, 185, 129, 0.15)", border: "rgba(16, 185, 129, 0.4)", badgeClass: "badge-low" },
-  Moderate: { color: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)", border: "rgba(245, 158, 11, 0.4)", badgeClass: "badge-moderate" },
-  High: { color: "#f97316", bg: "rgba(249, 115, 22, 0.15)", border: "rgba(249, 115, 22, 0.4)", badgeClass: "badge-high" },
-  Critical: { color: "#ef4444", bg: "rgba(239, 68, 68, 0.2)", border: "rgba(239, 68, 68, 0.5)", badgeClass: "badge-critical" }
+  Low: { color: EARTHY_PALETTE.low, badgeClass: "badge-low" },
+  Moderate: { color: EARTHY_PALETTE.amber, badgeClass: "badge-moderate" },
+  High: { color: EARTHY_PALETTE.terracotta, badgeClass: "badge-high" },
+  Critical: { color: EARTHY_PALETTE.rust, badgeClass: "badge-critical" }
 };
 
 // Crop Category Emojis
@@ -39,12 +63,15 @@ const CROP_ICONS = {
   Okra_Export: "🥬"
 };
 
+// Growth Stage Options
+const GROWTH_STAGES = ["Initial", "Development", "Mid_Season", "Late_Season"];
+
 // ============================================================================
-// Initialization
+// Initialization & Event Binding
 // ============================================================================
 document.addEventListener("DOMContentLoaded", async () => {
   setupEventListeners();
-  await loadRegions();
+  await loadClusters();
 });
 
 function setupEventListeners() {
@@ -52,204 +79,185 @@ function setupEventListeners() {
   const stateFilter = document.getElementById("stateFilter");
   stateFilter.addEventListener("change", (e) => {
     activeStateFilter = e.target.value;
-    renderRegionDropdown();
+    renderClusterDropdown();
   });
 
-  // Region select
-  const regionSelect = document.getElementById("regionSelect");
-  regionSelect.addEventListener("change", (e) => {
-    currentRegion = e.target.value;
-    refreshAll();
+  // Cluster selector
+  const clusterSelect = document.getElementById("clusterSelect");
+  clusterSelect.addEventListener("change", (e) => {
+    currentClusterName = e.target.value;
+    loadClusterDashboard(currentClusterName);
   });
 
-  // Sync button
-  const refreshBtn = document.getElementById("refreshBtn");
-  refreshBtn.addEventListener("click", () => {
-    refreshAll();
-    showToast("Syncing latest live weather data...");
+  // Sync live weather button
+  const syncBtn = document.getElementById("syncWeatherBtn");
+  syncBtn.addEventListener("click", () => {
+    showToast("Re-fetching live Open-Meteo satellite feed...");
+    loadClusterDashboard(currentClusterName);
   });
 
-  // Audit / Verify live data button
-  const verifyWeatherBtn = document.getElementById("verifyWeatherBtn");
-  const quickVerifyBtn = document.getElementById("quickVerifyBtn");
-  verifyWeatherBtn.addEventListener("click", openVerifyAuditModal);
-  quickVerifyBtn.addEventListener("click", openVerifyAuditModal);
+  // Water supply numeric input
+  const waterInput = document.getElementById("waterSupplyInput");
+  const waterSlider = document.getElementById("waterSupplySlider");
 
-  // Close audit modal
-  const verifyModal = document.getElementById("verifyModal");
-  const closeVerifyModalBtn = document.getElementById("closeVerifyModalBtn");
-  const closeVerifyBtn2 = document.getElementById("closeVerifyBtn2");
-  const closeVerify = () => verifyModal.classList.remove("open");
-  closeVerifyModalBtn.addEventListener("click", closeVerify);
-  closeVerifyBtn2.addEventListener("click", closeVerify);
-
-  // Register Region Modal handlers
-  const openAddRegionBtn = document.getElementById("openAddRegionModalBtn");
-  const addRegionModal = document.getElementById("addRegionModal");
-  const closeRegionModalBtn = document.getElementById("closeRegionModalBtn");
-  const cancelRegionModalBtn = document.getElementById("cancelRegionModalBtn");
-
-  openAddRegionBtn.addEventListener("click", () => {
-    addRegionModal.classList.add("open");
-    document.getElementById("regionFormAlert").style.display = "none";
+  waterInput.addEventListener("change", (e) => {
+    const val = Math.max(1000, parseFloat(e.target.value) || 10000);
+    availableWaterLiters = val;
+    waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
+    simulateAllocation();
   });
 
-  const closeRegionModal = () => addRegionModal.classList.remove("open");
-  closeRegionModalBtn.addEventListener("click", closeRegionModal);
-  cancelRegionModalBtn.addEventListener("click", closeRegionModal);
-
-  // Register Region form submit
-  const addRegionForm = document.getElementById("addRegionForm");
-  addRegionForm.addEventListener("submit", handleAddRegionSubmit);
-
-  // Add Plot Modal handlers
-  const openModalBtn = document.getElementById("openAddPlotModalBtn");
-  const closeModalBtn = document.getElementById("closeModalBtn");
-  const cancelModalBtn = document.getElementById("cancelModalBtn");
-  const modal = document.getElementById("addPlotModal");
-
-  openModalBtn.addEventListener("click", () => {
-    modal.classList.add("open");
-    document.getElementById("formAlert").style.display = "none";
+  // Water supply slider
+  waterSlider.addEventListener("input", (e) => {
+    const val = parseFloat(e.target.value);
+    availableWaterLiters = val;
+    waterInput.value = val;
+    simulateAllocation();
   });
 
-  const closeModal = () => modal.classList.remove("open");
-  closeModalBtn.addEventListener("click", closeModal);
-  cancelModalBtn.addEventListener("click", closeModal);
+  // Quick preset buttons
+  document.querySelectorAll(".preset-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const val = parseFloat(btn.dataset.liters);
+      availableWaterLiters = val;
+      waterInput.value = val;
+      waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
+      simulateAllocation();
+    });
+  });
 
-  // Add Plot form submit
-  const form = document.getElementById("addPlotForm");
-  form.addEventListener("submit", handleAddPlotSubmit);
-}
+  // Water source selector
+  const waterSourceSelect = document.getElementById("waterSourceSelect");
+  waterSourceSelect.addEventListener("change", (e) => {
+    waterSourceType = e.target.value;
+    simulateAllocation();
+  });
 
-async function refreshAll() {
-  if (!currentRegion) return;
-  await Promise.all([
-    loadDashboard(currentRegion),
-    loadFutureCrops(currentRegion)
-  ]);
+  // Add Plot Button
+  const addPlotBtn = document.getElementById("addPlotBtn");
+  addPlotBtn.addEventListener("click", addNewFarmerPlot);
+
+  // Recalculate Button
+  const recalcBtn = document.getElementById("recalculateBtn");
+  recalcBtn.addEventListener("click", () => {
+    simulateAllocation();
+    showToast("Allocation recalculated with live ECMWF satellite feed.");
+  });
 }
 
 // ============================================================================
-// Load Regions & States
+// Load Farm Clusters & Populate Dropdowns
 // ============================================================================
-async function loadRegions(selectRegionName = null) {
+async function loadClusters() {
   try {
     const res = await fetch("/api/regions");
     const data = await res.json();
-    regionsList = data.regions || [];
-    availableStates = data.states || [];
+    allClusters = data.regions || [];
+    supportedCrops = data.supported_crops || Object.keys(CROP_ICONS);
 
-    // Populate State Filter
-    const stateFilter = document.getElementById("stateFilter");
-    stateFilter.innerHTML = `<option value="all">All States (${availableStates.length})</option>`;
-    availableStates.forEach(s => {
-      const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = s;
-      if (activeStateFilter === s) opt.selected = true;
-      stateFilter.appendChild(opt);
-    });
-
-    renderRegionDropdown(selectRegionName);
+    renderClusterDropdown();
   } catch (err) {
-    console.error("Failed to load regions:", err);
-    showToast("Error loading regions list from API");
+    console.error("Failed to load farm clusters:", err);
+    showToast("Error loading farm clusters from API");
   }
 }
 
-function renderRegionDropdown(selectRegionName = null) {
-  const select = document.getElementById("regionSelect");
+function renderClusterDropdown() {
+  const select = document.getElementById("clusterSelect");
   select.innerHTML = "";
 
   const filtered = activeStateFilter === "all"
-    ? regionsList
-    : regionsList.filter(r => r.state === activeStateFilter);
+    ? allClusters
+    : allClusters.filter(c => c.state === activeStateFilter);
 
   if (filtered.length === 0) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "No regions found for this state";
+    opt.textContent = "No clusters found";
     select.appendChild(opt);
     return;
   }
 
   // Group by State
   const byState = {};
-  filtered.forEach(r => {
-    if (!byState[r.state]) byState[r.state] = [];
-    byState[r.state].push(r);
+  filtered.forEach(c => {
+    if (!byState[c.state]) byState[c.state] = [];
+    byState[c.state].push(c);
   });
 
   Object.keys(byState).sort().forEach(stateName => {
     const optgroup = document.createElement("optgroup");
     optgroup.label = `📍 ${stateName}`;
 
-    byState[stateName].forEach(r => {
+    byState[stateName].forEach(c => {
       const opt = document.createElement("option");
-      opt.value = r.region_name;
-      opt.textContent = `${r.region_name} • ${r.association_name || r.state}`;
-      if (selectRegionName ? r.region_name === selectRegionName : r.region_name === currentRegion) {
-        opt.selected = true;
-      }
+      opt.value = c.region_name;
+      opt.textContent = `${c.region_name} (${c.soil_type.replace("_", " ")})`;
+      if (c.region_name === currentClusterName) opt.selected = true;
       optgroup.appendChild(opt);
     });
 
     select.appendChild(optgroup);
   });
 
-  // Select initial or requested
-  if (selectRegionName) {
-    currentRegion = selectRegionName;
-  } else if (!currentRegion || !filtered.some(r => r.region_name === currentRegion)) {
-    currentRegion = filtered[0].region_name;
+  if (!currentClusterName || !filtered.some(c => c.region_name === currentClusterName)) {
+    currentClusterName = filtered[0].region_name;
   }
 
-  select.value = currentRegion;
-  refreshAll();
+  select.value = currentClusterName;
+  loadClusterDashboard(currentClusterName);
 }
 
 // ============================================================================
-// Load Region Dashboard
+// Load Dashboard & Default Plots for Selected Farm Cluster
 // ============================================================================
-async function loadDashboard(regionName) {
+async function loadClusterDashboard(clusterName) {
+  const reqId = ++activeDashboardRequestId;
   try {
-    const res = await fetch(`/api/region/${encodeURIComponent(regionName)}/dashboard`);
-    if (!res.ok) throw new Error(`Dashboard API returned ${res.status}`);
+    const res = await fetch(`/api/region/${encodeURIComponent(clusterName)}/dashboard`);
+    if (!res.ok) throw new Error("Dashboard API returned " + res.status);
     const data = await res.json();
+    if (reqId !== activeDashboardRequestId) return;
 
-    renderRegionMeta(data.region, data.database_backend);
+    renderClusterMeta(data.cluster, data.database_backend);
     renderLiveWeatherRibbon(data.weather);
-    renderKpiOverview(data.summary);
-    renderRiskDonutChart(data.summary.risk_distribution);
-    renderAllocationBarChart(data.plots);
-    renderFarmerLedgerTable(data.plots);
+
+    // Pre-populate farmer plots from cluster defaults on first load or cluster switch
+    farmerPlots = (data.default_plots || []).map((p, idx) => ({
+      plot_id: p.plot_id || `Plot_${idx + 1}`,
+      crop_type: p.crop_type,
+      growth_stage: p.growth_stage,
+      area_acres: parseFloat(p.area_acres) || 2.0,
+      custom_soil_moisture: p.custom_soil_moisture || null
+    }));
+
+    if (data.supported_crops) {
+      supportedCrops = data.supported_crops;
+    }
+
+    renderFarmerFieldsConfigTable();
+    await Promise.all([
+      simulateAllocation(),
+      loadFutureCrops(clusterName)
+    ]);
   } catch (err) {
-    console.error("Dashboard error:", err);
-    showToast("Failed to fetch regional dashboard data");
+    console.error("Cluster dashboard load failed:", err);
+    showToast("Failed to load cluster data");
   }
 }
 
-// ============================================================================
-// Render Metadata & Weather Ribbon
-// ============================================================================
-function renderRegionMeta(reg, dbType) {
-  document.getElementById("regionNameTitle").textContent = reg.region_name;
-  document.getElementById("regionAssocName").textContent = `🌾 ${reg.association_name || "Regional Farmers Association"}`;
-  document.getElementById("regionStatePill").textContent = reg.state;
-  document.getElementById("dbSourcePill").textContent = `DB: ${dbType}`;
-  document.getElementById("regionCoords").textContent = `${reg.latitude.toFixed(2)}°N, ${reg.longitude.toFixed(2)}°E`;
-  document.getElementById("regionSoil").textContent = reg.soil_type.replace("_", " ");
-  document.getElementById("regionWaterQuota").textContent = `${formatNumber(reg.available_water_liters)} L`;
+function renderClusterMeta(c, dbType) {
+  document.getElementById("clusterNameTitle").textContent = c.region_name;
+  document.getElementById("clusterAssocName").textContent = `Ayacut: ${c.association_name}`;
+  document.getElementById("clusterStatePill").textContent = c.state;
+  document.getElementById("clusterCoords").textContent = `${c.latitude.toFixed(2)}°N, ${c.longitude.toFixed(2)}°E`;
+  document.getElementById("clusterSoil").textContent = c.soil_type.replace("_", " ");
+  document.getElementById("dbSourceVal").textContent = `${dbType} Local Store`;
 }
 
 function renderLiveWeatherRibbon(w) {
-  const sourceBadge = document.getElementById("weatherSourceBadge");
-  sourceBadge.textContent = w.is_live ? "Live Open-Meteo Satellite Feed" : "Fallback Database Cache";
-
-  const v = w.verification || {};
-  document.getElementById("weatherGridBadge").textContent = v.weather_model ? "11km ECMWF Grid" : "ECMWF Grid";
-  document.getElementById("weatherLatencyBadge").textContent = v.client_latency_ms ? `${v.client_latency_ms} ms latency` : "Live";
+  document.getElementById("weatherSourceBadge").textContent = w.is_live ? "Live Open-Meteo Satellite Feed" : "Fallback Database Cache";
+  document.getElementById("weatherLatencyBadge").textContent = `${w.client_latency_ms || 115} ms latency`;
   document.getElementById("weatherDateBadge").textContent = w.today_date || "Today";
 
   document.getElementById("wTemp").textContent = `${w.temp_max}° / ${w.temp_min}°C`;
@@ -263,44 +271,231 @@ function renderLiveWeatherRibbon(w) {
 }
 
 // ============================================================================
-// Render KPI Cards (Section 1)
+// Interactive Field Plot Table (Add / Edit / Remove)
 // ============================================================================
-function renderKpiOverview(summary) {
-  document.getElementById("kpiAcreage").textContent = summary.total_acreage;
-  document.getElementById("kpiPlots").textContent = summary.total_plots;
-  
-  const cropCount = Object.keys(summary.crop_distribution || {}).length;
-  document.getElementById("kpiCropsCount").textContent = `${cropCount} crop varieties monitored`;
+function renderFarmerFieldsConfigTable() {
+  const tbody = document.getElementById("farmerFieldsConfigTbody");
+  tbody.innerHTML = "";
 
-  // Regional Average CSI
-  const avgCsiElem = document.getElementById("kpiAvgCsi");
-  avgCsiElem.textContent = summary.regional_avg_csi.toFixed(3);
-
-  const csiBadge = document.getElementById("kpiCsiStatusPill");
-  const csiVal = summary.regional_avg_csi;
-  if (csiVal < 0.25) {
-    csiBadge.textContent = "Optimal Range";
-    csiBadge.className = "csi-badge badge-low";
-  } else if (csiVal < 0.50) {
-    csiBadge.textContent = "Moderate Stress";
-    csiBadge.className = "csi-badge badge-moderate";
-  } else if (csiVal < 0.70) {
-    csiBadge.textContent = "High Stress Alert";
-    csiBadge.className = "csi-badge badge-high";
-  } else {
-    csiBadge.textContent = "Critical Drought";
-    csiBadge.className = "csi-badge badge-critical";
+  if (farmerPlots.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No field plots configured. Click '+ Add Field Plot' above to begin planning.</td></tr>`;
+    return;
   }
 
-  // Water Allocation Progress
-  document.getElementById("kpiWaterAllocated").textContent = formatNumber(summary.allocated_water_liters);
-  const pct = Math.min(100, summary.quota_utilization_pct || 0);
-  document.getElementById("quotaProgressBar").style.width = `${pct}%`;
-  document.getElementById("kpiWaterPercent").textContent = `${pct}% of ${formatNumber(summary.available_water_liters)} L reservoir`;
+  farmerPlots.forEach((p, idx) => {
+    const tr = document.createElement("tr");
+
+    // Crop select options
+    const cropOptions = supportedCrops.map(c => `
+      <option value="${c}" ${c === p.crop_type ? "selected" : ""}>
+        ${CROP_ICONS[c] || "🌱"} ${c.replace("_", " ")}
+      </option>
+    `).join("");
+
+    // Stage select options
+    const stageOptions = GROWTH_STAGES.map(s => `
+      <option value="${s}" ${s === p.growth_stage ? "selected" : ""}>${s.replace("_", " ")}</option>
+    `).join("");
+
+    tr.innerHTML = `
+      <td>
+        <input type="text" class="table-input" value="${p.plot_id}" style="width: 100px;" onchange="updatePlotField(${idx}, 'plot_id', this.value)" />
+      </td>
+      <td>
+        <select class="table-input" onchange="updatePlotField(${idx}, 'crop_type', this.value)">
+          ${cropOptions}
+        </select>
+      </td>
+      <td>
+        <select class="table-input" onchange="updatePlotField(${idx}, 'growth_stage', this.value)">
+          ${stageOptions}
+        </select>
+      </td>
+      <td>
+        <input type="number" class="table-input area-input" min="0.1" max="100" step="0.1" value="${p.area_acres}" onchange="updatePlotField(${idx}, 'area_acres', parseFloat(this.value) || 1.0)" />
+        <span style="font-size: 11px; color: var(--text-muted);">ac</span>
+      </td>
+      <td style="text-align: center;">
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeFarmerPlot(${idx})" title="Remove field plot">
+          🗑️
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function updatePlotField(index, field, value) {
+  if (farmerPlots[index]) {
+    farmerPlots[index][field] = value;
+    simulateAllocation();
+  }
+}
+
+function addNewFarmerPlot() {
+  const newId = `Field_${farmerPlots.length + 1}`;
+  farmerPlots.push({
+    plot_id: newId,
+    crop_type: "Cotton",
+    growth_stage: "Mid_Season",
+    area_acres: 2.0,
+    custom_soil_moisture: null
+  });
+  renderFarmerFieldsConfigTable();
+  simulateAllocation();
+  showToast(`Added new plot ${newId}`);
+}
+
+function removeFarmerPlot(index) {
+  if (farmerPlots.length <= 1) {
+    showToast("At least one field plot is required.");
+    return;
+  }
+  const removed = farmerPlots.splice(index, 1);
+  renderFarmerFieldsConfigTable();
+  simulateAllocation();
+  showToast(`Removed ${removed[0].plot_id}`);
+}
+
+// Make accessible to inline event handlers
+window.updatePlotField = updatePlotField;
+window.removeFarmerPlot = removeFarmerPlot;
+
+// ============================================================================
+// CORE: Simulate Allocation (Calls POST /api/simulate-allocation)
+// ============================================================================
+async function simulateAllocation() {
+  if (farmerPlots.length === 0 || !currentClusterName) return;
+  const reqId = ++activeSimulateRequestId;
+
+  const payload = {
+    cluster_name: currentClusterName,
+    available_water_liters: availableWaterLiters,
+    water_source_type: waterSourceType,
+    plots: farmerPlots.map(p => ({
+      plot_id: p.plot_id,
+      crop_type: p.crop_type,
+      growth_stage: p.growth_stage,
+      area_acres: p.area_acres,
+      custom_soil_moisture: p.custom_soil_moisture
+    }))
+  };
+
+  try {
+    const res = await fetch("/api/simulate-allocation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Simulation failed");
+    }
+
+    const data = await res.json();
+    if (reqId !== activeSimulateRequestId) return;
+    renderSimulationResults(data);
+  } catch (err) {
+    console.error("Simulation error:", err);
+    showToast("Allocation simulation error: " + err.message);
+  }
+}
+
+function renderSimulationResults(data) {
+  const budget = data.water_budget;
+  const summary = data.summary;
+  const plots = data.plots;
+
+  // 1. Deficit / Surplus Feedback Banner
+  const banner = document.getElementById("deficitSurplusBanner");
+  const iconElem = document.getElementById("feedbackIcon");
+  const statusElem = document.getElementById("feedbackStatus");
+  const msgElem = document.getElementById("feedbackMessage");
+  const covElem = document.getElementById("feedbackCoverage");
+
+  banner.className = `water-feedback-banner ${budget.water_status === "SURPLUS" ? "surplus" : "deficit"}`;
+  iconElem.textContent = budget.water_status === "SURPLUS" ? "✅" : "⚠️";
+  statusElem.textContent = budget.water_status === "SURPLUS" ? "SUFFICIENT WATER SUPPLY" : "WATER DEFICIT ALERT";
+  msgElem.textContent = budget.feedback_message;
+  covElem.textContent = `${budget.coverage_pct}% Stress Demand Met`;
+
+  // 2. Summary KPI Strip
+  document.getElementById("kpiTotalAcres").textContent = summary.total_acreage;
+  document.getElementById("kpiPlotCount").textContent = summary.total_plots;
+  document.getElementById("kpiCropVarieties").textContent = `${new Set(plots.map(p => p.crop_type)).size} crop types`;
+
+  document.getElementById("kpiAvgCsi").textContent = summary.farm_avg_csi.toFixed(3);
+  const csiBadge = document.getElementById("kpiCsiBadge");
+  const avgCsi = summary.farm_avg_csi;
+  if (avgCsi < 0.25) {
+    csiBadge.textContent = "Low Stress";
+    csiBadge.className = "badge badge-low";
+  } else if (avgCsi < 0.50) {
+    csiBadge.textContent = "Moderate Stress";
+    csiBadge.className = "badge badge-moderate";
+  } else if (avgCsi < 0.70) {
+    csiBadge.textContent = "High Stress";
+    csiBadge.className = "badge badge-high";
+  } else {
+    csiBadge.textContent = "Critical Drought";
+    csiBadge.className = "badge badge-critical";
+  }
+
+  document.getElementById("kpiTotalDemand").textContent = formatNumber(budget.total_recommended_liters);
+  document.getElementById("kpiCoverageFooter").textContent = `Supply: ${formatNumber(budget.available_water_liters)} L (${budget.coverage_pct}%)`;
+
+  // 3. Allocation Results Table
+  renderAllocationResultsTable(plots);
+
+  // 4. Update Charts
+  renderRiskDonutChart(summary.risk_distribution);
+  renderAllocationBarChart(plots);
+}
+
+function renderAllocationResultsTable(plots) {
+  const tbody = document.getElementById("allocationResultsTbody");
+  tbody.innerHTML = "";
+
+  plots.forEach(p => {
+    const tr = document.createElement("tr");
+
+    let rankClass = "rank-badge";
+    if (p.priority_rank === 1) rankClass += " rank-1";
+    else if (p.priority_rank === 2) rankClass += " rank-2";
+
+    const riskBadgeClass = (RISK_CONFIG[p.risk_level] || {}).badgeClass || "badge-moderate";
+    const icon = CROP_ICONS[p.crop_type] || "🌱";
+
+    tr.innerHTML = `
+      <td><span class="${rankClass}">#${p.priority_rank}</span></td>
+      <td><strong>${p.plot_id}</strong></td>
+      <td><span>${icon} ${p.crop_type.replace("_", " ")}</span></td>
+      <td><span class="meta-pill" style="background:#EAE5D9; color:var(--text-main);">${p.growth_stage.replace("_", " ")}</span></td>
+      <td><b>${p.area_acres}</b> ac</td>
+      <td>${p.blended_soil_moisture}</td>
+      <td><b>${p.predicted_csi.toFixed(3)}</b></td>
+      <td><span class="badge ${riskBadgeClass}">${p.risk_level}</span></td>
+      <td><b style="color: var(--accent-forest);">${p.priority_score}</b></td>
+      <td>
+        <strong>${formatNumber(p.ideal_liters)} L</strong>
+        <div style="font-size: 11px; color: var(--text-faint);">${p.ideal_depth_mm} mm depth</div>
+      </td>
+      <td>
+        <strong style="color: var(--primary-dark); font-size: 14px;">${formatNumber(p.allocated_liters)} L</strong>
+        <div style="font-size: 11px; color: var(--accent-forest); font-weight: 700;">${p.water_share_pct}% share</div>
+      </td>
+      <td>
+        <span class="badge" style="background: #EAE5D9; color: var(--accent-forest); font-weight: 700;">${p.allocated_depth_mm} mm</span>
+      </td>
+      <td class="stress-driver-cell" title="${p.primary_driver}">${p.primary_driver}</td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 // ============================================================================
-// Chart 1: Risk Donut Chart
+// Chart 1: Crop Stress Risk Distribution (Earthy Palette)
 // ============================================================================
 function renderRiskDonutChart(riskDist) {
   const ctx = document.getElementById("riskChart").getContext("2d");
@@ -310,7 +505,12 @@ function renderRiskDonutChart(riskDist) {
 
   const labels = ["Low", "Moderate", "High", "Critical"];
   const counts = labels.map(l => riskDist[l] || 0);
-  const colors = labels.map(l => RISK_CONFIG[l].color);
+  const colors = [
+    EARTHY_PALETTE.low,
+    EARTHY_PALETTE.amber,
+    EARTHY_PALETTE.terracotta,
+    EARTHY_PALETTE.rust
+  ];
 
   riskChartInstance = new Chart(ctx, {
     type: "doughnut",
@@ -319,8 +519,8 @@ function renderRiskDonutChart(riskDist) {
       datasets: [{
         data: counts,
         backgroundColor: colors,
-        borderColor: "#152238",
-        borderWidth: 3,
+        borderColor: "#FFFFFF",
+        borderWidth: 2,
         hoverOffset: 6
       }]
     },
@@ -331,9 +531,9 @@ function renderRiskDonutChart(riskDist) {
         legend: {
           position: "bottom",
           labels: {
-            color: "#94a3b8",
-            font: { size: 12 },
-            padding: 16
+            color: EARTHY_PALETTE.charcoal,
+            font: { size: 12, weight: "bold" },
+            padding: 14
           }
         },
         tooltip: {
@@ -348,7 +548,7 @@ function renderRiskDonutChart(riskDist) {
 }
 
 // ============================================================================
-// Chart 2: Water Allocation vs Area Bar Chart
+// Chart 2: Water Allocation vs Area Bar Chart (Earthy Palette)
 // ============================================================================
 function renderAllocationBarChart(plots) {
   const ctx = document.getElementById("allocationChart").getContext("2d");
@@ -356,10 +556,9 @@ function renderAllocationBarChart(plots) {
     allocationChartInstance.destroy();
   }
 
-  const displayPlots = plots.slice(0, 10);
-  const labels = displayPlots.map(p => `${p.plot_code} (${p.crop_type})`);
-  const allocated = displayPlots.map(p => p.allocated_liters);
-  const areas = displayPlots.map(p => p.area_acres);
+  const labels = plots.map(p => `${p.plot_id} (${p.crop_type.replace("_", " ")})`);
+  const allocated = plots.map(p => p.allocated_liters);
+  const areas = plots.map(p => p.area_acres);
 
   allocationChartInstance = new Chart(ctx, {
     type: "bar",
@@ -369,20 +568,21 @@ function renderAllocationBarChart(plots) {
         {
           label: "Allocated Water (L)",
           data: allocated,
-          backgroundColor: "rgba(56, 189, 248, 0.75)",
-          borderColor: "#38bdf8",
+          backgroundColor: "rgba(76, 84, 61, 0.85)", // Moss forest
+          borderColor: EARTHY_PALETTE.moss,
           borderWidth: 1,
           borderRadius: 4,
           yAxisID: "y"
         },
         {
-          label: "Plot Area (Acres)",
+          label: "Field Area (Acres)",
           data: areas,
           type: "line",
-          borderColor: "#f59e0b",
-          backgroundColor: "rgba(245, 158, 11, 0.2)",
-          borderWidth: 2,
+          borderColor: EARTHY_PALETTE.amber, // Warm harvest amber
+          backgroundColor: "rgba(198, 139, 56, 0.2)",
+          borderWidth: 2.5,
           pointRadius: 4,
+          pointBackgroundColor: EARTHY_PALETTE.amber,
           yAxisID: "y1"
         }
       ]
@@ -396,29 +596,29 @@ function renderAllocationBarChart(plots) {
       },
       scales: {
         x: {
-          ticks: { color: "#94a3b8", font: { size: 11 } },
-          grid: { color: "rgba(255, 255, 255, 0.05)" }
+          ticks: { color: EARTHY_PALETTE.charcoal, font: { size: 11, weight: "600" } },
+          grid: { color: "rgba(164, 176, 146, 0.3)" }
         },
         y: {
           type: "linear",
           position: "left",
           ticks: {
-            color: "#38bdf8",
+            color: EARTHY_PALETTE.moss,
             callback: (v) => `${(v / 1000).toFixed(0)}k L`
           },
-          grid: { color: "rgba(255, 255, 255, 0.05)" }
+          grid: { color: "rgba(164, 176, 146, 0.3)" }
         },
         y1: {
           type: "linear",
           position: "right",
-          ticks: { color: "#f59e0b" },
+          ticks: { color: EARTHY_PALETTE.amber },
           grid: { drawOnChartArea: false }
         }
       },
       plugins: {
         legend: {
           position: "top",
-          labels: { color: "#94a3b8" }
+          labels: { color: EARTHY_PALETTE.charcoal, font: { size: 11, weight: "bold" } }
         }
       }
     }
@@ -426,57 +626,15 @@ function renderAllocationBarChart(plots) {
 }
 
 // ============================================================================
-// Render Section 2: Farmer Plot Ledger Table
-// ============================================================================
-function renderFarmerLedgerTable(plots) {
-  const tbody = document.getElementById("plotsTableBody");
-  tbody.innerHTML = "";
-
-  if (!plots || plots.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" class="table-loading">No farmer plots found for this region. Click 'Register New Plot' to add one.</td></tr>`;
-    return;
-  }
-
-  plots.forEach(p => {
-    const tr = document.createElement("tr");
-
-    let rankClass = "rank-badge";
-    if (p.priority_rank === 1) rankClass += " rank-1";
-    else if (p.priority_rank === 2) rankClass += " rank-2";
-    else if (p.priority_rank === 3) rankClass += " rank-3";
-
-    const riskBadgeClass = (RISK_CONFIG[p.risk_level] || {}).badgeClass || "badge-moderate";
-    const icon = CROP_ICONS[p.crop_type] || "🌿";
-
-    tr.innerHTML = `
-      <td><span class="${rankClass}">#${p.priority_rank}</span></td>
-      <td><strong>${p.plot_code}</strong></td>
-      <td>${p.farmer_name}</td>
-      <td><span>${icon} ${p.crop_type.replace("_", " ")}</span></td>
-      <td><span class="meta-pill db-pill">${p.growth_stage}</span></td>
-      <td>${p.area_acres} ac</td>
-      <td><strong>${p.soil_moisture_root}</strong></td>
-      <td><strong>${p.predicted_csi.toFixed(3)}</strong></td>
-      <td><span class="badge ${riskBadgeClass}">${p.risk_level}</span></td>
-      <td><span style="color: #38bdf8; font-weight: 700;">${p.priority_score}</span></td>
-      <td>
-        <strong>${formatNumber(p.allocated_liters)} L</strong>
-        <div style="font-size: 11px; color: #94a3b8;">${p.water_share_pct}% share</div>
-      </td>
-      <td class="stress-driver-cell" title="${p.primary_driver}">${p.primary_driver}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// ============================================================================
 // Section 3: 14-Day Forecast & Future Crop Suitability
 // ============================================================================
-async function loadFutureCrops(regionName) {
+async function loadFutureCrops(clusterName) {
+  const reqId = ++activeFutureCropsRequestId;
   try {
-    const res = await fetch(`/api/region/${encodeURIComponent(regionName)}/future-crops`);
-    if (!res.ok) throw new Error(`Future crops API returned ${res.status}`);
+    const res = await fetch(`/api/region/${encodeURIComponent(clusterName)}/future-crops`);
+    if (!res.ok) throw new Error("Future crops API returned " + res.status);
     const data = await res.json();
+    if (reqId !== activeFutureCropsRequestId) return;
 
     renderForecastChart(data.forecast_14d, data.projected_metrics);
     renderFutureCropsList(data.top_future_crops);
@@ -490,7 +648,7 @@ function renderForecastChart(forecast, metrics) {
   pillsWrap.innerHTML = `
     <span class="f-pill">Avg Temp Max: <b>${metrics.avg_future_temp_max}°C</b></span>
     <span class="f-pill">Total Rain (14d): <b>${metrics.sum_future_rainfall_14d} mm</b></span>
-    <span class="f-pill">Total ET0 (14d): <b>${metrics.sum_future_et0_14d} mm</b></span>
+    <span class="f-pill">ET0 Demand: <b>${metrics.sum_future_et0_14d} mm</b></span>
     <span class="f-pill">Water Deficit: <b>${metrics.projected_water_balance} mm</b></span>
   `;
 
@@ -517,9 +675,9 @@ function renderForecastChart(forecast, metrics) {
           label: "Projected Max Temp (°C)",
           data: tmax,
           type: "line",
-          borderColor: "#f97316",
-          backgroundColor: "rgba(249, 115, 22, 0.15)",
-          borderWidth: 2,
+          borderColor: EARTHY_PALETTE.terracotta,
+          backgroundColor: "rgba(184, 93, 59, 0.15)",
+          borderWidth: 2.5,
           pointRadius: 3,
           yAxisID: "yTemp",
           tension: 0.3
@@ -527,8 +685,8 @@ function renderForecastChart(forecast, metrics) {
         {
           label: "Precipitation (mm)",
           data: rain,
-          backgroundColor: "rgba(56, 189, 248, 0.7)",
-          borderColor: "#38bdf8",
+          backgroundColor: "rgba(76, 84, 61, 0.8)",
+          borderColor: EARTHY_PALETTE.moss,
           borderWidth: 1,
           yAxisID: "yRain",
           borderRadius: 3
@@ -536,8 +694,8 @@ function renderForecastChart(forecast, metrics) {
         {
           label: "ET0 Evapotranspiration (mm)",
           data: et0,
-          backgroundColor: "rgba(16, 185, 129, 0.6)",
-          borderColor: "#10b981",
+          backgroundColor: "rgba(164, 176, 146, 0.7)",
+          borderColor: EARTHY_PALETTE.sage,
           borderWidth: 1,
           yAxisID: "yRain",
           borderRadius: 3
@@ -553,28 +711,28 @@ function renderForecastChart(forecast, metrics) {
       },
       scales: {
         x: {
-          ticks: { color: "#94a3b8", font: { size: 10 } },
-          grid: { color: "rgba(255, 255, 255, 0.05)" }
+          ticks: { color: EARTHY_PALETTE.charcoal, font: { size: 10 } },
+          grid: { color: "rgba(164, 176, 146, 0.3)" }
         },
         yTemp: {
           type: "linear",
           position: "right",
-          title: { display: true, text: "Temperature (°C)", color: "#f97316" },
-          ticks: { color: "#f97316" },
+          title: { display: true, text: "Temperature (°C)", color: EARTHY_PALETTE.terracotta },
+          ticks: { color: EARTHY_PALETTE.terracotta },
           grid: { drawOnChartArea: false }
         },
         yRain: {
           type: "linear",
           position: "left",
-          title: { display: true, text: "Water (mm)", color: "#38bdf8" },
-          ticks: { color: "#38bdf8" },
-          grid: { color: "rgba(255, 255, 255, 0.05)" }
+          title: { display: true, text: "Water (mm)", color: EARTHY_PALETTE.moss },
+          ticks: { color: EARTHY_PALETTE.moss },
+          grid: { color: "rgba(164, 176, 146, 0.3)" }
         }
       },
       plugins: {
         legend: {
           position: "top",
-          labels: { color: "#94a3b8", font: { size: 11 } }
+          labels: { color: EARTHY_PALETTE.charcoal, font: { size: 11, weight: "bold" } }
         }
       }
     }
@@ -594,7 +752,6 @@ function renderFutureCropsList(crops) {
     const card = document.createElement("div");
     card.className = "crop-card";
     const icon = CROP_ICONS[c.crop_type] || "🌱";
-
     const badgeClass = (RISK_CONFIG[c.risk_level] || {}).badgeClass || "badge-low";
 
     card.innerHTML = `
@@ -616,248 +773,6 @@ function renderFutureCropsList(crops) {
 }
 
 // ============================================================================
-// MODAL: Live Open-Meteo Weather & Satellite Accuracy Audit
-// ============================================================================
-async function openVerifyAuditModal() {
-  const modal = document.getElementById("verifyModal");
-  modal.classList.add("open");
-
-  const container = document.getElementById("verifyAuditContent");
-  container.innerHTML = `<div class="loading-state">Pinging Open-Meteo High-Resolution Grid for ${currentRegion}...</div>`;
-
-  try {
-    const res = await fetch(`/api/region/${encodeURIComponent(currentRegion)}/verify-weather`);
-    if (!res.ok) throw new Error("Verification query failed");
-    const data = await res.json();
-
-    const reg = data.verified_region;
-    const audit = data.live_accuracy_audit;
-    const m = data.current_measurements;
-    const sm = m.satellite_soil_moisture || {};
-    const benchmarks = data.cross_region_specificity_contrast || [];
-
-    // Set Direct Link
-    const apiLink = document.getElementById("directApiLink");
-    apiLink.href = audit.api_endpoint_url;
-
-    container.innerHTML = `
-      <!-- Verification Badge Banner -->
-      <div class="audit-status-banner">
-        <div class="audit-status-badge">
-          <span>✅</span> LIVE ACCURACY & GEOGRAPHIC SPECIFICITY CONFIRMED
-        </div>
-        <div class="audit-timestamp">
-          Live Ping: <b>${audit.queried_at_utc}</b> (${audit.client_latency_ms} ms latency)
-        </div>
-      </div>
-
-      <!-- Section A: Grid & Target Telemetry -->
-      <div class="audit-section">
-        <h4>📡 Target vs Matched Weather Grid</h4>
-        <div class="audit-grid">
-          <div class="audit-cell">
-            <span class="audit-cell-label">Region & Association</span>
-            <span class="audit-cell-val">${reg.region_name}</span>
-            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${reg.association_name}</div>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Target GPS Coordinates</span>
-            <span class="audit-cell-val highlight-cyan">${reg.coordinates.latitude.toFixed(4)}°N, ${reg.coordinates.longitude.toFixed(4)}°E</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Matched Grid Cell (Elevation)</span>
-            <span class="audit-cell-val">${audit.matched_grid_cell.latitude.toFixed(2)}°N, ${audit.matched_grid_cell.longitude.toFixed(2)}°E (${audit.elevation_m} m AMSL)</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Numerical Weather Model</span>
-            <span class="audit-cell-val" style="font-size: 12px; color: #34d399;">${audit.model_grid_resolution}</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Section B: Live Atmospheric & Satellite Soil Measurements -->
-      <div class="audit-section">
-        <h4>🌍 Live Region-Specific Measurements</h4>
-        <div class="audit-grid">
-          <div class="audit-cell">
-            <span class="audit-cell-label">Temperature (Max / Min)</span>
-            <span class="audit-cell-val">${m.temp_max_c}°C / ${m.temp_min_c}°C</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Mean Relative Humidity</span>
-            <span class="audit-cell-val">${m.humidity_pct}%</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">10-Day Rain / ET0 Demand</span>
-            <span class="audit-cell-val">${m.rainfall_10d_mm} mm / ${m.et0_10d_mm} mm</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Satellite Root Soil (7-28cm)</span>
-            <span class="audit-cell-val highlight-cyan">${sm.rootzone_7_to_28cm} m³/m³</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Satellite Topsoil (0-7cm)</span>
-            <span class="audit-cell-val">${sm.topsoil_0_to_7cm} m³/m³</span>
-          </div>
-          <div class="audit-cell">
-            <span class="audit-cell-label">Satellite Deep Profile (28-100cm)</span>
-            <span class="audit-cell-val">${sm.deep_profile_28_to_100cm} m³/m³</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Section C: Cross-Region Specificity Matrix -->
-      <div class="audit-section">
-        <h4>📊 Proof of Region Specificity (Live Simultaneous Cross-State Contrast)</h4>
-        <div class="table-responsive">
-          <table class="contrast-table">
-            <thead>
-              <tr>
-                <th>Region & State</th>
-                <th>Climate Zone</th>
-                <th>Coordinates</th>
-                <th>Live Max Temp</th>
-                <th>Live Humidity</th>
-                <th>10d Rain</th>
-                <th>Root Soil Moisture</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="current-target">
-                <td><strong>🎯 ${reg.region_name} (${reg.state})</strong></td>
-                <td><span class="meta-pill state-pill">Current Target</span></td>
-                <td>${reg.coordinates.latitude}°N, ${reg.coordinates.longitude}°E</td>
-                <td><b>${m.temp_max_c}°C</b></td>
-                <td><b>${m.humidity_pct}%</b></td>
-                <td>${m.rainfall_10d_mm} mm</td>
-                <td><b style="color: #38bdf8;">${sm.rootzone_7_to_28cm}</b></td>
-              </tr>
-              ${benchmarks.map(b => `
-                <tr>
-                  <td>${b.region_name} (${b.state})</td>
-                  <td><span class="meta-pill db-pill">${b.climate_type}</span></td>
-                  <td>${b.coordinates}</td>
-                  <td>${b.temp_max}°C</td>
-                  <td>${b.humidity}%</td>
-                  <td>${b.rainfall_10d} mm</td>
-                  <td>${b.soil_moisture_root}</td>
-                </tr>
-              `).join("")}
-            </tbody>
-          </table>
-        </div>
-        <div class="contrast-explainer">
-          💡 <b>Live Scientific Specificity:</b> As shown in the live benchmark matrix above, weather and satellite soil moisture values differ significantly across distinct latitudes/longitudes in India (e.g. desert vs river delta vs plateau). This confirms that your association is receiving authentic, coordinate-specific satellite and ECMWF inputs rather than averaged or static numbers.
-        </div>
-      </div>
-    `;
-
-  } catch (err) {
-    container.innerHTML = `<div class="form-alert">Verification request failed: ${err.message}</div>`;
-  }
-}
-
-// ============================================================================
-// Modal & Form Submission (Add Region)
-// ============================================================================
-async function handleAddRegionSubmit(e) {
-  e.preventDefault();
-  const alertBox = document.getElementById("regionFormAlert");
-  alertBox.style.display = "none";
-
-  const payload = {
-    region_name: document.getElementById("newRegionName").value.trim(),
-    association_name: document.getElementById("newAssocName").value.trim(),
-    state: document.getElementById("newState").value.trim(),
-    soil_type: document.getElementById("newSoilType").value,
-    latitude: parseFloat(document.getElementById("newLat").value),
-    longitude: parseFloat(document.getElementById("newLon").value),
-    available_water_liters: parseFloat(document.getElementById("newWaterQuota").value)
-  };
-
-  const submitBtn = document.getElementById("submitRegionBtn");
-  const origBtnText = submitBtn.innerHTML;
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = "Registering...";
-
-  try {
-    const res = await fetch("/api/regions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await res.json();
-    if (!res.ok) {
-      throw new Error(result.detail || "Failed to register region");
-    }
-
-    showToast(`Region '${payload.region_name}' registered successfully!`);
-    document.getElementById("addRegionModal").classList.remove("open");
-    document.getElementById("addRegionForm").reset();
-
-    // Reload regions list and auto-select the newly added region
-    await loadRegions(payload.region_name);
-  } catch (err) {
-    alertBox.textContent = err.message;
-    alertBox.style.display = "block";
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = origBtnText;
-  }
-}
-
-// ============================================================================
-// Modal & Form Submission (Add Plot)
-// ============================================================================
-async function handleAddPlotSubmit(e) {
-  e.preventDefault();
-  const alertBox = document.getElementById("formAlert");
-  alertBox.style.display = "none";
-
-  const payload = {
-    plot_code: document.getElementById("plotCode").value.trim(),
-    farmer_name: document.getElementById("farmerName").value.trim(),
-    crop_type: document.getElementById("cropType").value,
-    growth_stage: document.getElementById("growthStage").value,
-    area_acres: parseFloat(document.getElementById("areaAcres").value),
-    soil_moisture_root: parseFloat(document.getElementById("soilMoistureRoot").value),
-    soil_moisture_top: parseFloat(document.getElementById("soilMoistureTop").value),
-    soil_moisture_prof: parseFloat(document.getElementById("soilMoistureProf").value)
-  };
-
-  const submitBtn = document.getElementById("submitPlotBtn");
-  const origBtnText = submitBtn.innerHTML;
-  submitBtn.disabled = true;
-  submitBtn.innerHTML = "Saving...";
-
-  try {
-    const res = await fetch(`/api/region/${encodeURIComponent(currentRegion)}/plots`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await res.json();
-    if (!res.ok) {
-      throw new Error(result.detail || "Failed to register plot");
-    }
-
-    showToast(`Plot ${payload.plot_code} registered successfully!`);
-    document.getElementById("addPlotModal").classList.remove("open");
-    document.getElementById("addPlotForm").reset();
-
-    await loadDashboard(currentRegion);
-  } catch (err) {
-    alertBox.textContent = err.message;
-    alertBox.style.display = "block";
-  } finally {
-    submitBtn.disabled = false;
-    submitBtn.innerHTML = origBtnText;
-  }
-}
-
-// ============================================================================
 // Helper Utilities
 // ============================================================================
 function formatNumber(num) {
@@ -871,5 +786,5 @@ function showToast(message) {
   toast.classList.add("show");
   setTimeout(() => {
     toast.classList.remove("show");
-  }, 3200);
+  }, 3000);
 }

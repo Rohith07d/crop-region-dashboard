@@ -5,196 +5,296 @@ from db import db_manager
 
 client = TestClient(app)
 
+CLUSTERS_ALL = [
+    "Shadnagar Ayacut Cluster",
+    "Miryalaguda Canal Command",
+    "Bodhan Nizamsagar Block",
+    "Siddipet Komaticheruvu Farms",
+    "Tenali Western Canal Block",
+    "Anantapur Tadipatri Drip Zone",
+    "Bhimavaram Godavari Delta Block",
+    "Nandyal KC Canal Ayacut",
+]
+
 def test_root_serves_html():
-    """Verify that root endpoint serves the index.html frontend."""
+    """Verify that root endpoint serves the Farmer Water & Crop Allocator HTML."""
     res = client.get("/")
     assert res.status_code == 200
-    assert "AgriStress Regional Intelligence" in res.text
+    assert "AgriStress — Farmer Water & Crop Allocator" in res.text
     assert "chart.js" in res.text.lower()
+    assert "id=\"clusterSelect\"" in res.text
+    assert "id=\"waterSupplyInput\"" in res.text
 
 def test_static_files():
-    """Verify that static CSS and JS are served properly."""
+    """Verify that static CSS and JS are served properly with earthy theme variables."""
     res_css = client.get("/static/style.css")
     assert res_css.status_code == 200
-    assert "--bg-primary" in res_css.text
+    assert "--bg-page: #EAE5D9;" in res_css.text
+    assert "--primary-dark: #312C18;" in res_css.text
+    assert "--accent-forest: #4C543D;" in res_css.text
+    assert "--accent-sage: #A4B092;" in res_css.text
 
     res_js = client.get("/static/app.js")
     assert res_js.status_code == 200
-    assert "loadDashboard" in res_js.text
+    assert "simulateAllocation" in res_js.text
+    assert "renderAllocationBarChart" in res_js.text
 
 def test_get_regions():
-    """Verify /api/regions returns all expanded agricultural regions and states."""
+    """Verify /api/regions returns all 8 localized AP & Telangana farm clusters."""
     res = client.get("/api/regions")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
-    assert data["count"] >= 12
-    assert len(data["states"]) >= 7
+    assert data["count"] >= 8
+    assert sorted(data["states"]) == ["Andhra Pradesh", "Telangana"]
 
-    names = [r["region_name"] for r in data["regions"]]
-    assert "Nizamabad Basin" in names
-    assert "Guntur Delta" in names
-    assert "Warangal Uplands" in names
-    assert "Karimnagar Canal Zone" in names
-    assert "Vidarbha Black Soil Belt" in names
-    assert "Malwa Granary" in names
-    assert "Cauvery Delta" in names
-    assert "Marwar Arid Region" in names
+    cluster_names = [r["region_name"] for r in data["regions"]]
+    for expected in CLUSTERS_ALL:
+        assert expected in cluster_names
 
-    # Verify association names are present
-    assocs = [r.get("association_name") for r in data["regions"]]
-    assert any("Farmers" in a or "Collective" in a or "Forum" in a for a in assocs if a)
+    # Check 15 model trained crops
+    supported_crops = data["supported_crops"]
+    assert len(supported_crops) == 15
+    expected_crops = [
+        "Rice", "Cotton", "Maize", "Soybean", "Groundnut",
+        "Chilli_Export", "Turmeric", "Gherkins", "Dragon_Fruit",
+        "Pomegranate", "Avocado", "Quinoa", "Bell_Pepper",
+        "Guava_Export", "Okra_Export"
+    ]
+    for c in expected_crops:
+        assert c in supported_crops
 
 def test_get_regions_state_filter():
-    """Verify filtering regions by state."""
-    res = client.get("/api/regions?state=Maharashtra")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["count"] >= 2
-    for r in data["regions"]:
-        assert r["state"] == "Maharashtra"
+    """Verify filtering clusters by state (Telangana and Andhra Pradesh)."""
+    # Telangana filter
+    res_ts = client.get("/api/regions?state=Telangana")
+    assert res_ts.status_code == 200
+    data_ts = res_ts.json()
+    assert data_ts["count"] == 4
+    for r in data_ts["regions"]:
+        assert r["state"] == "Telangana"
 
-def test_create_region():
-    """Verify dynamic registration of a new association/region."""
-    import uuid
-    uid = str(uuid.uuid4())[:6]
-    payload = {
-        "region_name": f"Kurnool Agri Hub {uid}",
-        "association_name": "Kurnool Progressive Seed Collective",
-        "state": "Andhra Pradesh",
-        "latitude": 15.8281,
-        "longitude": 78.0373,
-        "soil_type": "Black_Clay",
-        "available_water_liters": 600000.0
-    }
-    res = client.post("/api/regions", json=payload)
-    assert res.status_code == 201
-    d = res.json()
-    assert d["status"] == "success"
-    assert d["region"]["region_name"] == payload["region_name"]
+    # Andhra Pradesh filter
+    res_ap = client.get("/api/regions?state=Andhra%20Pradesh")
+    assert res_ap.status_code == 200
+    data_ap = res_ap.json()
+    assert data_ap["count"] == 4
+    for r in data_ap["regions"]:
+        assert r["state"] == "Andhra Pradesh"
 
-    # Verify it shows up in dashboard
-    dash_res = client.get(f"/api/region/{payload['region_name']}/dashboard")
-    assert dash_res.status_code == 200
-    assert dash_res.json()["region"]["association_name"] == payload["association_name"]
-
-def test_verify_region_weather():
-    """Verify live weather audit trail, grid resolution, and regional specificity."""
-    res = client.get("/api/region/Marwar%20Arid%20Region/verify-weather")
+@pytest.mark.parametrize("cluster_name", CLUSTERS_ALL)
+def test_cluster_dashboard(cluster_name):
+    """Verify cluster dashboard metadata, live Open-Meteo weather, and pre-populated plots."""
+    res = client.get(f"/api/region/{cluster_name}/dashboard")
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
-    assert data["verified_region"]["region_name"] == "Marwar Arid Region"
-    
-    audit = data["live_accuracy_audit"]
-    assert audit["live_status"] == "ACCURACY_VERIFIED_REGION_SPECIFIC"
-    assert "api_endpoint_url" in audit
-    assert "https://api.open-meteo.com/v1/forecast" in audit["api_endpoint_url"]
-    assert "client_latency_ms" in audit
-    assert "elevation_m" in audit
 
-    # Verify measurements
-    m = data["current_measurements"]
-    assert "temp_max_c" in m
-    assert "humidity_pct" in m
-    assert "satellite_soil_moisture" in m
-    assert "rootzone_7_to_28cm" in m["satellite_soil_moisture"]
+    cluster = data["cluster"]
+    assert cluster["region_name"] == cluster_name
+    assert cluster["state"] in ["Telangana", "Andhra Pradesh"]
+    assert cluster["soil_type"] in ["Black_Clay", "Red_Sandy", "Alluvial_Loam"]
+    assert cluster["default_water_liters"] == 50000.0
 
-    # Verify cross-region specificity benchmarks
-    contrast = data["cross_region_specificity_contrast"]
-    assert len(contrast) >= 2
-    for b in contrast:
-        assert "region_name" in b
-        assert "humidity" in b
-        assert "temp_max" in b
-
-@pytest.mark.parametrize("region_name", [
-    "Nizamabad Basin",
-    "Guntur Delta",
-    "Warangal Uplands",
-    "Karimnagar Canal Zone",
-    "Vidarbha Black Soil Belt",
-    "Malwa Granary",
-    "Cauvery Delta",
-    "Marwar Arid Region",
-])
-def test_region_dashboard(region_name):
-    """Verify regional dashboard metrics, live weather, and farmer plots across diverse zones."""
-    res = client.get(f"/api/region/{region_name}/dashboard")
-    assert res.status_code == 200
-    data = res.json()
-    assert data["status"] == "success"
-    assert data["region"]["region_name"] == region_name
-    assert "association_name" in data["region"]
-
-    # Weather fields
     weather = data["weather"]
     assert "temp_max" in weather
     assert "temp_min" in weather
     assert "humidity" in weather
     assert "soil_moisture_root" in weather
-    assert "verification" in weather
+    assert weather["client_latency_ms"] >= 0
 
-    # Summary KPIs
-    summary = data["summary"]
-    assert summary["total_plots"] >= 6
-    assert summary["total_acreage"] > 0
-    assert 0.0 <= summary["regional_avg_csi"] <= 1.0
-    assert summary["available_water_liters"] > 0
-    assert summary["allocated_water_liters"] <= summary["available_water_liters"] + 1.0
-
-    # Plots
-    plots = data["plots"]
+    plots = data["default_plots"]
+    assert len(plots) >= 3
+    valid_crops = list(ARTIFACTS.get("crop_registry", {}).keys())
     for p in plots:
-        assert 0.0 <= p["predicted_csi"] <= 1.0
-        assert p["risk_level"] in ["Low", "Moderate", "High", "Critical"]
-        assert p["priority_score"] >= 0.0
-        assert "allocated_liters" in p
+        assert p["crop_type"] in valid_crops
+        assert p["growth_stage"] in ["Initial", "Development", "Mid_Season", "Late_Season"]
+        assert p["area_acres"] > 0
+        assert 0.05 <= p["custom_soil_moisture"] <= 0.95
 
-def test_future_crops_recommendation():
-    """Verify /api/region/{name}/future-crops returns 5 ranked crops."""
-    res = client.get("/api/region/Malwa%20Granary/future-crops")
+def test_cluster_dashboard_not_found():
+    """Verify 404 for unknown farm cluster."""
+    res = client.get("/api/region/NonExistentCluster/dashboard")
+    assert res.status_code == 404
+    assert "not found" in res.json()["detail"].lower()
+
+def test_simulate_allocation_surplus():
+    """Verify water allocation simulation under surplus supply."""
+    payload = {
+        "cluster_name": "Shadnagar Ayacut Cluster",
+        "available_water_liters": 250000.0,
+        "water_source_type": "Borewell",
+        "plots": [
+            {
+                "plot_id": "Plot_1",
+                "crop_type": "Cotton",
+                "growth_stage": "Mid_Season",
+                "area_acres": 0.8,
+                "custom_soil_moisture": 0.40
+            },
+            {
+                "plot_id": "Plot_2",
+                "crop_type": "Maize",
+                "growth_stage": "Development",
+                "area_acres": 0.5,
+                "custom_soil_moisture": 0.45
+            },
+            {
+                "plot_id": "Plot_3",
+                "crop_type": "Groundnut",
+                "growth_stage": "Initial",
+                "area_acres": 0.6,
+                "custom_soil_moisture": 0.50
+            }
+        ]
+    }
+    res = client.post("/api/simulate-allocation", json=payload)
     assert res.status_code == 200
     data = res.json()
     assert data["status"] == "success"
+    assert data["cluster_name"] == "Shadnagar Ayacut Cluster"
+
+    wb = data["water_budget"]
+    assert wb["water_status"] == "SURPLUS"
+    assert wb["available_water_liters"] == 250000.0
+    assert wb["water_balance_liters"] >= 0
+    assert wb["coverage_pct"] >= 100.0
+    assert "Sufficient Water Reserve" in wb["feedback_message"]
+
+    plots = data["plots"]
+    assert len(plots) == 3
+
+    # Conservation of water: sum of allocated liters equals available water
+    total_allocated = sum(p["allocated_liters"] for p in plots)
+    assert total_allocated == pytest.approx(250000.0, abs=1.0)
+
+    # Water share percentages sum to 100%
+    total_shares = sum(p["water_share_pct"] for p in plots)
+    assert total_shares == pytest.approx(100.0, abs=0.5)
+
+    # Priority rank order (1, 2, 3)
+    ranks = [p["priority_rank"] for p in plots]
+    assert ranks == [1, 2, 3]
+
+    # Priority score descending
+    scores = [p["priority_score"] for p in plots]
+    assert scores == sorted(scores, reverse=True)
+
+    # Water depth check
+    for p in plots:
+        assert p["allocated_depth_mm"] > 0
+        assert 0.0 <= p["predicted_csi"] <= 1.0
+
+def test_simulate_allocation_deficit():
+    """Verify water allocation simulation under deficit supply (prioritization triggers)."""
+    payload = {
+        "cluster_name": "Miryalaguda Canal Command",
+        "available_water_liters": 15000.0,
+        "water_source_type": "Canal Lift",
+        "plots": [
+            {
+                "plot_id": "Plot_Critical_Rice",
+                "crop_type": "Rice",
+                "growth_stage": "Mid_Season",
+                "area_acres": 4.0,
+                "custom_soil_moisture": 0.15
+            },
+            {
+                "plot_id": "Plot_Tolerant_DragonFruit",
+                "crop_type": "Dragon_Fruit",
+                "growth_stage": "Late_Season",
+                "area_acres": 2.0,
+                "custom_soil_moisture": 0.35
+            }
+        ]
+    }
+    res = client.post("/api/simulate-allocation", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+
+    wb = data["water_budget"]
+    assert wb["water_status"] == "DEFICIT"
+    assert wb["water_balance_liters"] < 0
+    assert wb["coverage_pct"] < 100.0
+    assert "Water Deficit Warning" in wb["feedback_message"]
+
+    plots = data["plots"]
+    assert len(plots) == 2
+    # Critical Rice in Mid_Season with dry soil must get Rank 1
+    assert plots[0]["plot_id"] == "Plot_Critical_Rice"
+    assert plots[0]["priority_rank"] == 1
+    assert plots[0]["allocated_liters"] > plots[1]["allocated_liters"]
+
+    # Sum of allocated liters equals available water
+    total_allocated = sum(p["allocated_liters"] for p in plots)
+    assert total_allocated == pytest.approx(15000.0, abs=1.0)
+
+def test_simulate_allocation_validation_errors():
+    """Verify 400 on invalid crop and 422 on invalid ranges."""
+    # Unknown crop
+    bad_crop_req = {
+        "cluster_name": "Shadnagar Ayacut Cluster",
+        "available_water_liters": 50000.0,
+        "plots": [
+            {
+                "plot_id": "P1",
+                "crop_type": "Pineapple_Not_Supported",
+                "growth_stage": "Mid_Season",
+                "area_acres": 2.0
+            }
+        ]
+    }
+    res = client.post("/api/simulate-allocation", json=bad_crop_req)
+    assert res.status_code == 400
+    assert "Unknown crop_type" in res.json()["detail"]
+
+    # Invalid area (negative or 0)
+    bad_area_req = {
+        "cluster_name": "Shadnagar Ayacut Cluster",
+        "available_water_liters": 50000.0,
+        "plots": [
+            {
+                "plot_id": "P1",
+                "crop_type": "Cotton",
+                "growth_stage": "Mid_Season",
+                "area_acres": -1.0
+            }
+        ]
+    }
+    res = client.post("/api/simulate-allocation", json=bad_area_req)
+    assert res.status_code == 422
+
+    # Cluster not found
+    bad_cluster_req = {
+        "cluster_name": "Unknown_Cluster_XYZ",
+        "available_water_liters": 50000.0,
+        "plots": [
+            {
+                "plot_id": "P1",
+                "crop_type": "Cotton",
+                "growth_stage": "Mid_Season",
+                "area_acres": 2.0
+            }
+        ]
+    }
+    res = client.post("/api/simulate-allocation", json=bad_cluster_req)
+    assert res.status_code == 404
+
+def test_future_crops_recommendation():
+    """Verify /api/region/{name}/future-crops returns Top 5 crops and 15 ranked crops."""
+    res = client.get("/api/region/Anantapur%20Tadipatri%20Drip%20Zone/future-crops")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert data["cluster_name"] == "Anantapur Tadipatri Drip Zone"
     assert len(data["top_future_crops"]) == 5
     assert len(data["all_ranked_crops"]) == 15
 
     top_crops = data["top_future_crops"]
     csis = [c["projected_csi"] for c in top_crops]
     assert csis == sorted(csis)
-
-def test_add_plot_success():
-    """Verify adding a new farmer plot to a region and checking persistence."""
-    region_name = "Vidarbha Black Soil Belt"
-    new_plot = {
-        "plot_code": "VDB-TEST-NEW",
-        "farmer_name": "Nitin Gadkari",
-        "crop_type": "Cotton",
-        "growth_stage": "Mid_Season",
-        "area_acres": 3.5,
-        "soil_moisture_top": 0.28,
-        "soil_moisture_root": 0.32,
-        "soil_moisture_prof": 0.38,
-        "prev_soil_moisture_root": 0.30
-    }
-    res = client.post(f"/api/region/{region_name}/plots", json=new_plot)
-    assert res.status_code == 201
-    data = res.json()
-    assert data["status"] == "success"
-    assert data["plot"]["plot_code"] == new_plot["plot_code"]
-
-def test_add_plot_validation_errors():
-    """Verify 400 on invalid crop type and 422 on invalid ranges."""
-    bad_crop_payload = {
-        "plot_code": "BAD-01",
-        "farmer_name": "Test",
-        "crop_type": "Unknown_Invalid",
-        "growth_stage": "Initial",
-        "area_acres": 1.0,
-        "soil_moisture_top": 0.4,
-        "soil_moisture_root": 0.4,
-        "soil_moisture_prof": 0.4
-    }
-    res = client.post("/api/region/Nizamabad%20Basin/plots", json=bad_crop_payload)
-    assert res.status_code == 400
+    for c in top_crops:
+        assert 0.0 <= c["projected_csi"] <= 1.0
+        assert 0.0 <= c["suitability_score_pct"] <= 100.0
+        assert c["crop_type"] in ARTIFACTS["crop_registry"]
