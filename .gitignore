@@ -21,6 +21,7 @@ Thumbs.db
 # Environment Variables & Secrets
 .env
 .env.*
+!.env.example
 
 # Testing & Cache
 .pytest_cache/
@@ -30,6 +31,7 @@ htmlcov/
 # Local Scratch / Test Scripts & Visualizations (keep deployment repo lightweight)
 *.sqlite
 test_*.py
+!test_app.py
 build_full_dataset.py
 train_models.py
 visualize_models.py
