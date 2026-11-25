@@ -152,13 +152,22 @@ body {
 }
 
 .select-input {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.08);
   color: #FFFFFF;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   outline: none;
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+.select-input:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .select-input option, .select-input optgroup {
@@ -167,7 +176,7 @@ body {
 }
 
 .cluster-select {
-  max-width: 290px;
+  max-width: 320px;
 }
 
 /* Buttons */
@@ -245,7 +254,7 @@ body {
 /* Cluster Ribbon & Weather Banner */
 .cluster-banner {
   display: grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns: minmax(380px, 440px) 1fr;
   gap: 18px;
 }
 
@@ -416,7 +425,7 @@ body {
 
 .weather-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
   gap: 10px;
 }
 
@@ -443,7 +452,8 @@ body {
   display: block;
   font-size: 11px;
   color: var(--text-muted);
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.25;
 }
 
 .w-value {
@@ -1055,6 +1065,168 @@ body {
   line-height: 1.35;
   border-top: 1px solid rgba(164, 176, 146, 0.3);
   padding-top: 5px;
+}
+
+/* =========================================================================
+   Farm Clusters Selector Modal
+   ========================================================================= */
+.cluster-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(49, 44, 24, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.cluster-modal-dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 860px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.cluster-modal-header {
+  padding: 16px 22px;
+  background: var(--primary-dark);
+  color: #FFFFFF;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cluster-modal-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.modal-subtitle {
+  font-size: 12px;
+  color: #D3CDC0;
+  margin-top: 2px;
+}
+
+.modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  color: #FFFFFF;
+  cursor: pointer;
+  padding: 0 6px;
+}
+
+.modal-close-btn:hover {
+  color: var(--accent-sage);
+}
+
+.modal-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 22px;
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.modal-tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-muted);
+  background: #FFFFFF;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-tab.active {
+  background: var(--accent-forest);
+  color: #FFFFFF;
+  border-color: var(--primary-dark);
+}
+
+.cluster-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 12px;
+  padding: 18px 22px;
+  overflow-y: auto;
+  max-height: 55vh;
+}
+
+.cluster-card-item {
+  background: var(--bg-card-elevated);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cluster-card-item:hover {
+  border-color: var(--accent-forest);
+  box-shadow: 0 4px 12px rgba(76, 84, 61, 0.15);
+  transform: translateY(-2px);
+}
+
+.cluster-card-item.selected {
+  border-color: var(--accent-forest);
+  border-width: 2px;
+  background: #FFFFFF;
+}
+
+.cluster-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.cluster-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cluster-card-assoc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.cluster-card-details {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.cluster-card-details span {
+  background: var(--bg-page);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  border: 1px solid rgba(164, 176, 146, 0.4);
 }
 
 /* Toast */

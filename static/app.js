@@ -89,6 +89,46 @@ function setupEventListeners() {
     loadClusterDashboard(currentClusterName);
   });
 
+  // Cluster control box click opens select
+  const clusterBox = document.getElementById("clusterControlBox");
+  if (clusterBox) {
+    clusterBox.addEventListener("click", (e) => {
+      if (e.target.tagName !== "SELECT") {
+        try { clusterSelect.showPicker(); } catch (err) { clusterSelect.focus(); }
+      }
+    });
+  }
+
+  // Browse Clusters Modal triggers
+  const browseBtn = document.getElementById("browseClustersBtn");
+  if (browseBtn) browseBtn.addEventListener("click", openClusterModal);
+
+  const changeBtn = document.getElementById("changeClusterBtn");
+  if (changeBtn) changeBtn.addEventListener("click", openClusterModal);
+
+  const closeBtn = document.getElementById("closeClusterModalBtn");
+  if (closeBtn) closeBtn.addEventListener("click", closeClusterModal);
+
+  const modal = document.getElementById("clusterModal");
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeClusterModal();
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeClusterModal();
+  });
+
+  // Modal State Tabs
+  document.querySelectorAll(".modal-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll(".modal-tab").forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      renderClusterModalGrid(tab.dataset.tabState);
+    });
+  });
+
   // Sync live weather button
   const syncBtn = document.getElementById("syncWeatherBtn");
   syncBtn.addEventListener("click", () => {
@@ -209,6 +249,77 @@ function renderClusterDropdown() {
 }
 
 // ============================================================================
+// Farm Clusters Modal Functions
+// ============================================================================
+function openClusterModal() {
+  const modal = document.getElementById("clusterModal");
+  if (!modal) return;
+  modal.style.display = "flex";
+  document.querySelectorAll(".modal-tab").forEach(t => {
+    if (t.dataset.tabState === "all") t.classList.add("active");
+    else t.classList.remove("active");
+  });
+  renderClusterModalGrid("all");
+}
+
+function closeClusterModal() {
+  const modal = document.getElementById("clusterModal");
+  if (modal) modal.style.display = "none";
+}
+
+function renderClusterModalGrid(filterState = "all") {
+  const grid = document.getElementById("clusterModalGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  const clusters = filterState === "all"
+    ? allClusters
+    : allClusters.filter(c => c.state === filterState);
+
+  clusters.forEach(c => {
+    const isSelected = c.region_name === currentClusterName;
+    const card = document.createElement("div");
+    card.className = `cluster-card-item ${isSelected ? "selected" : ""}`;
+    card.innerHTML = `
+      <div class="cluster-card-header">
+        <div>
+          <div class="cluster-card-title">${c.region_name}</div>
+          <div class="cluster-card-assoc">Ayacut: ${c.association_name || "Farm Command"}</div>
+        </div>
+        <span class="meta-pill state-pill" style="font-size: 11px;">${c.state}</span>
+      </div>
+      <div class="cluster-card-details">
+        <span><b>Soil:</b> ${c.soil_type.replace("_", " ")}</span>
+        <span><b>GPS:</b> ${Number(c.latitude).toFixed(2)}°N, ${Number(c.longitude).toFixed(2)}°E</span>
+        ${isSelected ? '<span style="background: var(--accent-forest); color: #fff; font-weight: bold; border-color: var(--accent-forest);">✓ Active</span>' : ''}
+      </div>
+    `;
+
+    card.addEventListener("click", () => {
+      selectClusterByName(c.region_name);
+      closeClusterModal();
+    });
+
+    grid.appendChild(card);
+  });
+}
+
+function selectClusterByName(clusterName) {
+  currentClusterName = clusterName;
+  const select = document.getElementById("clusterSelect");
+  if (select) select.value = clusterName;
+  const stateFilter = document.getElementById("stateFilter");
+  const targetObj = allClusters.find(c => c.region_name === clusterName);
+  if (targetObj && stateFilter && stateFilter.value !== "all" && stateFilter.value !== targetObj.state) {
+    stateFilter.value = "all";
+    activeStateFilter = "all";
+    renderClusterDropdown();
+  }
+  loadClusterDashboard(clusterName);
+  showToast(`Loaded ${clusterName}`);
+}
+
+// ============================================================================
 // Load Dashboard & Default Plots for Selected Farm Cluster
 // ============================================================================
 async function loadClusterDashboard(clusterName) {
@@ -218,6 +329,7 @@ async function loadClusterDashboard(clusterName) {
     if (!res.ok) throw new Error("Dashboard API returned " + res.status);
     const data = await res.json();
     if (reqId !== activeDashboardRequestId) return;
+    if (data.cluster && data.cluster.region_name !== currentClusterName) return;
 
     renderClusterMeta(data.cluster, data.database_backend);
     renderLiveWeatherRibbon(data.weather);
@@ -395,6 +507,7 @@ async function simulateAllocation() {
 
     const data = await res.json();
     if (reqId !== activeSimulateRequestId) return;
+    if (data.cluster_name && data.cluster_name !== currentClusterName) return;
     renderSimulationResults(data);
   } catch (err) {
     console.error("Simulation error:", err);
@@ -635,6 +748,7 @@ async function loadFutureCrops(clusterName) {
     if (!res.ok) throw new Error("Future crops API returned " + res.status);
     const data = await res.json();
     if (reqId !== activeFutureCropsRequestId) return;
+    if (data.cluster_name && data.cluster_name !== currentClusterName) return;
 
     renderForecastChart(data.forecast_14d, data.projected_metrics);
     renderFutureCropsList(data.top_future_crops);

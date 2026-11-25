@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AgriStress — Farmer Water & Crop Allocation Tool</title>
-  <link rel="stylesheet" href="/static/style.css?v=3.1">
+  <link rel="stylesheet" href="/static/style.css?v=3.3">
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -33,12 +33,17 @@
         </div>
 
         <!-- Local Farm Cluster Selector -->
-        <div class="control-box">
+        <div class="control-box" id="clusterControlBox" title="Click to choose a farm cluster">
           <label for="clusterSelect">Farm Cluster:</label>
           <select id="clusterSelect" class="select-input cluster-select">
             <option value="" disabled selected>Loading farm clusters...</option>
           </select>
         </div>
+
+        <!-- Browse All Clusters Modal Trigger -->
+        <button id="browseClustersBtn" class="btn btn-header" title="Browse all 8 Farm Clusters">
+          <span>🗺️</span> Browse Clusters
+        </button>
 
         <!-- Sync Live Weather -->
         <button id="syncWeatherBtn" class="btn btn-header" title="Re-fetch live Open-Meteo satellite feed">
@@ -59,7 +64,12 @@
             <h2 id="clusterNameTitle">—</h2>
             <div id="clusterAssocName" class="cluster-assoc-name">—</div>
           </div>
-          <span id="clusterStatePill" class="meta-pill state-pill">—</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="changeClusterBtn" class="btn btn-secondary btn-sm" title="Click to browse and switch farm clusters">
+              <span>📍</span> Switch Cluster
+            </button>
+            <span id="clusterStatePill" class="meta-pill state-pill">—</span>
+          </div>
         </div>
 
         <div class="cluster-meta-details">
@@ -390,6 +400,29 @@
     </section>
 
   </main>
+
+  <!-- Farm Clusters Modal -->
+  <div id="clusterModal" class="cluster-modal-backdrop" style="display: none;">
+    <div class="cluster-modal-dialog">
+      <div class="cluster-modal-header">
+        <div>
+          <h3>🌾 Select Farm Cluster</h3>
+          <p class="modal-subtitle">Choose from 8 localized agricultural clusters in Telangana and Andhra Pradesh</p>
+        </div>
+        <button id="closeClusterModalBtn" class="modal-close-btn" title="Close">&times;</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab-state="all">All Clusters (8)</button>
+        <button class="modal-tab" data-tab-state="Telangana">Telangana (4)</button>
+        <button class="modal-tab" data-tab-state="Andhra Pradesh">Andhra Pradesh (4)</button>
+      </div>
+
+      <div id="clusterModalGrid" class="cluster-modal-grid">
+        <!-- Dynamically rendered cluster cards -->
+      </div>
+    </div>
+  </div>
 
   <!-- Notification Toast -->
   <div id="toast" class="toast"></div>
