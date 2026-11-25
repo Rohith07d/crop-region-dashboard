@@ -4,8 +4,6 @@
  * Interactive Field Planning, Open-Meteo Integration, Multi-Language i18n (English, Telugu, Hindi)
  */
 
-// Global Translation Dictionary Reference
-const TRANSLATIONS = window.TRANSLATIONS || {};
 
 // Built-in Farm Clusters Fallback (AP & Telangana)
 const FALLBACK_CLUSTERS = [
@@ -316,18 +314,18 @@ function setLanguage(lang) {
 }
 
 function applyLanguage(lang) {
-  const dicts = window.TRANSLATIONS || TRANSLATIONS || {};
+  const dicts = window.TRANSLATIONS || {};
   if (!dicts[lang]) lang = "en";
   currentLang = lang;
 
   // 1. Update Document Title
-  const metaTitle = TRANSLATIONS[lang]?.meta?.title;
+  const metaTitle = window.TRANSLATIONS[lang]?.meta?.title;
   if (metaTitle) document.title = metaTitle;
 
   // 2. Update all static [data-i18n] text nodes
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const keyPath = el.getAttribute("data-i18n");
-    const val = getNestedTranslation(TRANSLATIONS[lang], keyPath);
+    const val = getNestedTranslation(window.TRANSLATIONS[lang], keyPath);
     if (val !== undefined) {
       el.textContent = val;
     }
@@ -336,7 +334,7 @@ function applyLanguage(lang) {
   // 3. Update optgroups in clusterSelect
   document.querySelectorAll("[data-i18n-optgroup]").forEach(el => {
     const stateKey = el.getAttribute("data-i18n-optgroup");
-    const translatedState = TRANSLATIONS[lang]?.states?.[stateKey] || stateKey;
+    const translatedState = window.TRANSLATIONS[lang]?.states?.[stateKey] || stateKey;
     el.label = `📍 ${translatedState}`;
   });
 
@@ -350,9 +348,9 @@ function applyLanguage(lang) {
   const stateFilter = document.getElementById("stateFilter");
   if (stateFilter) {
     Array.from(stateFilter.options).forEach(opt => {
-      if (opt.value === "all") opt.textContent = TRANSLATIONS[lang]?.states?.all || "All States";
-      else if (opt.value === "Telangana") opt.textContent = TRANSLATIONS[lang]?.states?.Telangana || "Telangana";
-      else if (opt.value === "Andhra Pradesh") opt.textContent = TRANSLATIONS[lang]?.states?.["Andhra Pradesh"] || "Andhra Pradesh";
+      if (opt.value === "all") opt.textContent = window.TRANSLATIONS[lang]?.states?.all || "All States";
+      else if (opt.value === "Telangana") opt.textContent = window.TRANSLATIONS[lang]?.states?.Telangana || "Telangana";
+      else if (opt.value === "Andhra Pradesh") opt.textContent = window.TRANSLATIONS[lang]?.states?.["Andhra Pradesh"] || "Andhra Pradesh";
     });
   }
 
@@ -360,7 +358,7 @@ function applyLanguage(lang) {
   const waterSourceSelect = document.getElementById("waterSourceSelect");
   if (waterSourceSelect) {
     Array.from(waterSourceSelect.options).forEach(opt => {
-      const trans = TRANSLATIONS[lang]?.sources?.[opt.value];
+      const trans = window.TRANSLATIONS[lang]?.sources?.[opt.value];
       if (trans) opt.textContent = trans;
     });
   }
@@ -442,15 +440,15 @@ function renderClusterModalGrid(filterState = "all") {
     ? allClusters
     : allClusters.filter(c => c.state === filterState);
 
-  const soilWord = TRANSLATIONS[currentLang]?.modal?.soil_label || "Soil:";
-  const gpsWord = TRANSLATIONS[currentLang]?.modal?.gps_label || "GPS:";
-  const activeWord = TRANSLATIONS[currentLang]?.modal?.active_badge || "✓ Active";
-  const ayacutWord = TRANSLATIONS[currentLang]?.weather?.ayacut_prefix || "Ayacut: ";
+  const soilWord = window.TRANSLATIONS[currentLang]?.modal?.soil_label || "Soil:";
+  const gpsWord = window.TRANSLATIONS[currentLang]?.modal?.gps_label || "GPS:";
+  const activeWord = window.TRANSLATIONS[currentLang]?.modal?.active_badge || "✓ Active";
+  const ayacutWord = window.TRANSLATIONS[currentLang]?.weather?.ayacut_prefix || "Ayacut: ";
 
   clusters.forEach(c => {
     const isSelected = c.region_name === currentClusterName;
-    const soilLabel = TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
-    const stateLabel = TRANSLATIONS[currentLang]?.states[c.state] || c.state;
+    const soilLabel = window.TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
+    const stateLabel = window.TRANSLATIONS[currentLang]?.states[c.state] || c.state;
 
     const card = document.createElement("div");
     card.className = `cluster-card-item ${isSelected ? "selected" : ""}`;
@@ -541,13 +539,13 @@ function renderClusterDropdown() {
 
   Object.keys(byState).sort().forEach(stateName => {
     const optgroup = document.createElement("optgroup");
-    const translatedState = TRANSLATIONS[currentLang]?.states?.[stateName] || stateName;
+    const translatedState = window.TRANSLATIONS[currentLang]?.states?.[stateName] || stateName;
     optgroup.label = `📍 ${translatedState}`;
 
     byState[stateName].forEach(c => {
       const opt = document.createElement("option");
       opt.value = c.region_name;
-      const soilLabel = TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
+      const soilLabel = window.TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
       opt.textContent = `${c.region_name} (${soilLabel})`;
       if (c.region_name === currentClusterName) opt.selected = true;
       optgroup.appendChild(opt);
@@ -606,32 +604,32 @@ function renderClusterMeta(c, dbType) {
   lastClusterMeta = { cluster: c, dbType };
   document.getElementById("clusterNameTitle").textContent = c.region_name;
 
-  const ayacutLabel = TRANSLATIONS[currentLang]?.weather?.ayacut_prefix || "Ayacut: ";
+  const ayacutLabel = window.TRANSLATIONS[currentLang]?.weather?.ayacut_prefix || "Ayacut: ";
   document.getElementById("clusterAssocName").textContent = `${ayacutLabel}${c.association_name}`;
 
-  const stateLabel = TRANSLATIONS[currentLang]?.states[c.state] || c.state;
+  const stateLabel = window.TRANSLATIONS[currentLang]?.states[c.state] || c.state;
   document.getElementById("clusterStatePill").textContent = stateLabel;
 
   document.getElementById("clusterCoords").textContent = `${c.latitude.toFixed(2)}°N, ${c.longitude.toFixed(2)}°E`;
 
-  const soilLabel = TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
+  const soilLabel = window.TRANSLATIONS[currentLang]?.soils[c.soil_type] || c.soil_type.replace("_", " ");
   document.getElementById("clusterSoil").textContent = soilLabel;
 
-  const storeLabel = TRANSLATIONS[currentLang]?.weather?.db_store || "Database Store";
+  const storeLabel = window.TRANSLATIONS[currentLang]?.weather?.db_store || "Database Store";
   document.getElementById("dbSourceVal").textContent = `${dbType} Local Store`;
 }
 
 function renderLiveWeatherRibbon(w) {
   lastWeatherData = w;
   const sourceLabel = w.is_live 
-    ? (TRANSLATIONS[currentLang]?.weather?.source_live || "Live Open-Meteo Satellite Feed")
-    : (TRANSLATIONS[currentLang]?.weather?.source_cache || "Fallback Database Cache");
+    ? (window.TRANSLATIONS[currentLang]?.weather?.source_live || "Live Open-Meteo Satellite Feed")
+    : (window.TRANSLATIONS[currentLang]?.weather?.source_cache || "Fallback Database Cache");
   document.getElementById("weatherSourceBadge").textContent = sourceLabel;
 
-  const latSuffix = TRANSLATIONS[currentLang]?.weather?.latency_suffix || "ms latency";
+  const latSuffix = window.TRANSLATIONS[currentLang]?.weather?.latency_suffix || "ms latency";
   document.getElementById("weatherLatencyBadge").textContent = `${w.client_latency_ms || 115} ${latSuffix}`;
 
-  document.getElementById("weatherDateBadge").textContent = w.today_date || (TRANSLATIONS[currentLang]?.weather?.today || "Today");
+  document.getElementById("weatherDateBadge").textContent = w.today_date || (window.TRANSLATIONS[currentLang]?.weather?.today || "Today");
 
   document.getElementById("wTemp").textContent = `${w.temp_max}° / ${w.temp_min}°C`;
   document.getElementById("wHumidity").textContent = `${w.humidity}%`;
@@ -666,7 +664,7 @@ function renderFarmerFieldsConfigTable() {
 
     // Crop select options - localized display, original English value
     const cropOptions = supportedCrops.map(c => {
-      const translatedCrop = TRANSLATIONS[currentLang]?.crops[c] || c.replace("_", " ");
+      const translatedCrop = window.TRANSLATIONS[currentLang]?.crops[c] || c.replace("_", " ");
       return `<option value="${c}" ${c === p.crop_type ? "selected" : ""}>
         ${CROP_ICONS[c] || "🌱"} ${translatedCrop}
       </option>`;
@@ -674,12 +672,12 @@ function renderFarmerFieldsConfigTable() {
 
     // Stage select options - localized display, original English value
     const stageOptions = GROWTH_STAGES.map(s => {
-      const translatedStage = TRANSLATIONS[currentLang]?.stages[s] || s.replace("_", " ");
+      const translatedStage = window.TRANSLATIONS[currentLang]?.stages[s] || s.replace("_", " ");
       return `<option value="${s}" ${s === p.growth_stage ? "selected" : ""}>${translatedStage}</option>`;
     }).join("");
 
     const acLabel = currentLang === "te" ? "ఎక." : (currentLang === "hi" ? "एकड़" : "ac");
-    const removeBtnTitle = TRANSLATIONS[currentLang]?.planner?.btn_remove || "Remove";
+    const removeBtnTitle = window.TRANSLATIONS[currentLang]?.planner?.btn_remove || "Remove";
 
     tr.innerHTML = `
       <td>
@@ -807,8 +805,8 @@ function renderSimulationResults(data) {
   iconElem.textContent = budget.water_status === "SURPLUS" ? "✅" : "⚠️";
 
   const statusText = budget.water_status === "SURPLUS"
-    ? (TRANSLATIONS[currentLang]?.planner?.status_surplus || "SUFFICIENT WATER SUPPLY")
-    : (TRANSLATIONS[currentLang]?.planner?.status_deficit || "WATER DEFICIT ALERT");
+    ? (window.TRANSLATIONS[currentLang]?.planner?.status_surplus || "SUFFICIENT WATER SUPPLY")
+    : (window.TRANSLATIONS[currentLang]?.planner?.status_deficit || "WATER DEFICIT ALERT");
   statusElem.textContent = statusText;
 
   msgElem.textContent = generateFeedbackMessage(
@@ -819,21 +817,21 @@ function renderSimulationResults(data) {
     currentLang
   );
 
-  const demandMetText = TRANSLATIONS[currentLang]?.planner?.stress_met_suffix || "Stress Demand Met";
+  const demandMetText = window.TRANSLATIONS[currentLang]?.planner?.stress_met_suffix || "Stress Demand Met";
   covElem.textContent = `${budget.coverage_pct}% ${demandMetText}`;
 
   // 2. Summary KPI Strip
   document.getElementById("kpiTotalAcres").textContent = summary.total_acreage;
   document.getElementById("kpiPlotCount").textContent = summary.total_plots;
 
-  const varietiesWord = TRANSLATIONS[currentLang]?.kpi?.varieties_unit || "crop types";
+  const varietiesWord = window.TRANSLATIONS[currentLang]?.kpi?.varieties_unit || "crop types";
   document.getElementById("kpiCropVarieties").textContent = `${new Set(plots.map(p => p.crop_type)).size} ${varietiesWord}`;
 
   document.getElementById("kpiAvgCsi").textContent = summary.farm_avg_csi.toFixed(3);
   const csiBadge = document.getElementById("kpiCsiBadge");
   const avgCsi = summary.farm_avg_csi;
 
-  const riskLabels = TRANSLATIONS[currentLang]?.risks || {};
+  const riskLabels = window.TRANSLATIONS[currentLang]?.risks || {};
   if (avgCsi < 0.25) {
     csiBadge.textContent = riskLabels.Low || "Low Stress";
     csiBadge.className = "badge badge-low";
@@ -873,9 +871,9 @@ function renderAllocationResultsTable(plots) {
 
     const riskBadgeClass = (RISK_CONFIG[p.risk_level] || {}).badgeClass || "badge-moderate";
     const icon = CROP_ICONS[p.crop_type] || "🌱";
-    const cropLabel = TRANSLATIONS[currentLang]?.crops[p.crop_type] || p.crop_type.replace("_", " ");
-    const stageLabel = TRANSLATIONS[currentLang]?.stages[p.growth_stage] || p.growth_stage.replace("_", " ");
-    const riskLabel = TRANSLATIONS[currentLang]?.risks[p.risk_level] || p.risk_level;
+    const cropLabel = window.TRANSLATIONS[currentLang]?.crops[p.crop_type] || p.crop_type.replace("_", " ");
+    const stageLabel = window.TRANSLATIONS[currentLang]?.stages[p.growth_stage] || p.growth_stage.replace("_", " ");
+    const riskLabel = window.TRANSLATIONS[currentLang]?.risks[p.risk_level] || p.risk_level;
     const translatedDriver = translateStressDriver(p.primary_driver, currentLang);
     const depthWord = currentLang === "te" ? "లోతు" : (currentLang === "hi" ? "गहराई" : "depth");
     const shareWord = currentLang === "te" ? "వాటా" : (currentLang === "hi" ? "हिस्सा" : "share");
@@ -918,7 +916,7 @@ function renderRiskDonutChart(riskDist) {
   }
 
   const rawLabels = ["Low", "Moderate", "High", "Critical"];
-  const displayLabels = rawLabels.map(l => TRANSLATIONS[currentLang]?.risks[l] || l);
+  const displayLabels = rawLabels.map(l => window.TRANSLATIONS[currentLang]?.risks[l] || l);
   const counts = rawLabels.map(l => riskDist[l] || 0);
   const colors = [
     EARTHY_PALETTE.low,
@@ -972,14 +970,14 @@ function renderAllocationBarChart(plots) {
   }
 
   const labels = plots.map(p => {
-    const cName = TRANSLATIONS[currentLang]?.crops[p.crop_type] || p.crop_type.replace("_", " ");
+    const cName = window.TRANSLATIONS[currentLang]?.crops[p.crop_type] || p.crop_type.replace("_", " ");
     return `${p.plot_id} (${cName})`;
   });
   const allocated = plots.map(p => p.allocated_liters);
   const areas = plots.map(p => p.area_acres);
 
-  const waterBarLabel = TRANSLATIONS[currentLang]?.charts?.alloc_bar_label || "Allocated Water (L)";
-  const areaLineLabel = TRANSLATIONS[currentLang]?.charts?.area_line_label || "Field Area (Acres)";
+  const waterBarLabel = window.TRANSLATIONS[currentLang]?.charts?.alloc_bar_label || "Allocated Water (L)";
+  const areaLineLabel = window.TRANSLATIONS[currentLang]?.charts?.area_line_label || "Field Area (Acres)";
 
   allocationChartInstance = new Chart(ctx, {
     type: "bar",
@@ -1069,9 +1067,9 @@ function renderForecastChart(forecast, metrics) {
   lastForecastData = forecast;
   lastProjectedMetrics = metrics;
 
-  const tmaxWord = TRANSLATIONS[currentLang]?.charts?.avg_tmax_label || "Avg Temp Max:";
-  const rainWord = TRANSLATIONS[currentLang]?.charts?.total_rain_label || "Total Rain (14d):";
-  const et0Word = TRANSLATIONS[currentLang]?.charts?.et0_label || "ET0 Demand:";
+  const tmaxWord = window.TRANSLATIONS[currentLang]?.charts?.avg_tmax_label || "Avg Temp Max:";
+  const rainWord = window.TRANSLATIONS[currentLang]?.charts?.total_rain_label || "Total Rain (14d):";
+  const et0Word = window.TRANSLATIONS[currentLang]?.charts?.et0_label || "ET0 Demand:";
   const netDeficitWord = currentLang === "te" ? "నికర లోటు:" : (currentLang === "hi" ? "शुद्ध कमी:" : "Water Balance:");
 
   const pillsWrap = document.getElementById("forecastPills");
@@ -1187,18 +1185,18 @@ function renderFutureCropsList(crops) {
     return;
   }
 
-  const fitWord = TRANSLATIONS[currentLang]?.charts?.fit_suffix || "Fit";
-  const projCsiWord = TRANSLATIONS[currentLang]?.charts?.proj_csi || "Projected CSI:";
-  const riskWord = TRANSLATIONS[currentLang]?.charts?.risk || "Risk:";
-  const heatTolWord = TRANSLATIONS[currentLang]?.charts?.heat_tol || "Heat Tol:";
+  const fitWord = window.TRANSLATIONS[currentLang]?.charts?.fit_suffix || "Fit";
+  const projCsiWord = window.TRANSLATIONS[currentLang]?.charts?.proj_csi || "Projected CSI:";
+  const riskWord = window.TRANSLATIONS[currentLang]?.charts?.risk || "Risk:";
+  const heatTolWord = window.TRANSLATIONS[currentLang]?.charts?.heat_tol || "Heat Tol:";
 
   crops.forEach((c, idx) => {
     const card = document.createElement("div");
     card.className = "crop-card";
     const icon = CROP_ICONS[c.crop_type] || "🌱";
     const badgeClass = (RISK_CONFIG[c.risk_level] || {}).badgeClass || "badge-low";
-    const cropLabel = TRANSLATIONS[currentLang]?.crops[c.crop_type] || c.crop_type.replace("_", " ");
-    const riskLabel = TRANSLATIONS[currentLang]?.risks[c.risk_level] || c.risk_level;
+    const cropLabel = window.TRANSLATIONS[currentLang]?.crops[c.crop_type] || c.crop_type.replace("_", " ");
+    const riskLabel = window.TRANSLATIONS[currentLang]?.risks[c.risk_level] || c.risk_level;
     const translatedReasoning = translateFutureReasoning(c.reasoning, currentLang);
 
     card.innerHTML = `

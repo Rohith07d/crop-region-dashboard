@@ -7,7 +7,7 @@
  * remain in standard English for model inference. Only display labels are translated.
  */
 
-const TRANSLATIONS = {
+window.TRANSLATIONS = {
   en: {
     meta: {
       title: "AgriStress — Farmer Water & Crop Allocator",
@@ -88,6 +88,8 @@ const TRANSLATIONS = {
       varieties_unit: "crop types"
     },
     charts: {
+      sec2_title: "14-Day Weather Forecast & Next-Season Suitable Crops",
+      sec2_desc: "Open-Meteo numerical climate projection and model-evaluated optimal crops for the cluster's soil and upcoming temperatures.",
       stress_dist_title: "Field Stress Risk Distribution",
       stress_dist_sub: "Plot breakdown by FAO-56 critical threshold classification",
       alloc_chart_title: "Water Allocation by Farmer Crop",
@@ -268,6 +270,8 @@ const TRANSLATIONS = {
       varieties_unit: "రకాల పంటలు"
     },
     charts: {
+      sec2_title: "14-రోజుల వాతావరణ అంచనా & తదుపరి సీజన్ అనుకూల పంటలు",
+      sec2_desc: "ఓపెన్-మెటియో వాతావరణ అంచనా మరియు ఈ క్లస్టర్ నేల, ఉష్ణోగ్రతలకు అనుగుణంగా మోడల్ సిఫార్సు చేసిన ఉత్తమ పంటలు.",
       stress_dist_title: "పొలాల పంట ఒత్తిడి ప్రమాద విభజన",
       stress_dist_sub: "FAO-56 ప్రమాద స్థాయిల ప్రకారం పొలాల వర్గీకరణ",
       alloc_chart_title: "పంటల వారీగా నీటి కేటాయింపు",
@@ -448,6 +452,8 @@ const TRANSLATIONS = {
       varieties_unit: "फसल किस्में"
     },
     charts: {
+      sec2_title: "14-दिवसीय मौसम पूर्वानुमान एवं आगामी सीजन हेतु उपयुक्त फसलें",
+      sec2_desc: "ओपन-मेटियो जलवायु पूर्वानुमान और इस क्लस्टर की मिट्टी व आगामी तापमान के अनुसार मॉडल द्वारा अनुशंसित सर्वोत्तम फसलें।",
       stress_dist_title: "खेत फसल तनाव जोखिम वितरण",
       stress_dist_sub: "FAO-56 क्रांतिक सीमा वर्गीकरण के आधार पर खेतों का विभाजन",
       alloc_chart_title: "फसलवार सिंचाई जल आवंटन",
@@ -688,7 +694,6 @@ function generateFeedbackMessage(waterStatus, availWater, balanceLiters, coverag
 }
 
 // Global Exports
-window.TRANSLATIONS = TRANSLATIONS;
 window.translateStressDriver = translateStressDriver;
 window.translateFutureReasoning = translateFutureReasoning;
 window.generateFeedbackMessage = generateFeedbackMessage;
