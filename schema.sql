@@ -15,6 +15,7 @@ USE crop_regional_db;
 CREATE TABLE IF NOT EXISTS regions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     region_name VARCHAR(100) NOT NULL UNIQUE,
+    association_name VARCHAR(150) NOT NULL DEFAULT 'Regional Agricultural Association',
     state VARCHAR(50) NOT NULL,
     latitude DECIMAL(8, 4) NOT NULL,
     longitude DECIMAL(8, 4) NOT NULL,

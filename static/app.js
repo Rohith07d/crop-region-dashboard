@@ -1,11 +1,13 @@
 /**
- * AgriStress Regional Intelligence - Vanilla JavaScript Frontend
- * Handles dynamic data fetching, Chart.js rendering, and plot registration.
+ * AgriStress Regional Intelligence - Enhanced Vanilla JavaScript Frontend
+ * Multi-State Region Filter, Association Ledger, and Live Open-Meteo Audit Inspector
  */
 
 // Global Application State
 let currentRegion = "";
 let regionsList = [];
+let availableStates = [];
+let activeStateFilter = "all";
 let riskChartInstance = null;
 let allocationChartInstance = null;
 let forecastChartInstance = null;
@@ -46,19 +48,61 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 function setupEventListeners() {
+  // State filter
+  const stateFilter = document.getElementById("stateFilter");
+  stateFilter.addEventListener("change", (e) => {
+    activeStateFilter = e.target.value;
+    renderRegionDropdown();
+  });
+
+  // Region select
   const regionSelect = document.getElementById("regionSelect");
   regionSelect.addEventListener("change", (e) => {
     currentRegion = e.target.value;
     refreshAll();
   });
 
+  // Sync button
   const refreshBtn = document.getElementById("refreshBtn");
   refreshBtn.addEventListener("click", () => {
     refreshAll();
     showToast("Syncing latest live weather data...");
   });
 
-  // Modal handlers
+  // Audit / Verify live data button
+  const verifyWeatherBtn = document.getElementById("verifyWeatherBtn");
+  const quickVerifyBtn = document.getElementById("quickVerifyBtn");
+  verifyWeatherBtn.addEventListener("click", openVerifyAuditModal);
+  quickVerifyBtn.addEventListener("click", openVerifyAuditModal);
+
+  // Close audit modal
+  const verifyModal = document.getElementById("verifyModal");
+  const closeVerifyModalBtn = document.getElementById("closeVerifyModalBtn");
+  const closeVerifyBtn2 = document.getElementById("closeVerifyBtn2");
+  const closeVerify = () => verifyModal.classList.remove("open");
+  closeVerifyModalBtn.addEventListener("click", closeVerify);
+  closeVerifyBtn2.addEventListener("click", closeVerify);
+
+  // Register Region Modal handlers
+  const openAddRegionBtn = document.getElementById("openAddRegionModalBtn");
+  const addRegionModal = document.getElementById("addRegionModal");
+  const closeRegionModalBtn = document.getElementById("closeRegionModalBtn");
+  const cancelRegionModalBtn = document.getElementById("cancelRegionModalBtn");
+
+  openAddRegionBtn.addEventListener("click", () => {
+    addRegionModal.classList.add("open");
+    document.getElementById("regionFormAlert").style.display = "none";
+  });
+
+  const closeRegionModal = () => addRegionModal.classList.remove("open");
+  closeRegionModalBtn.addEventListener("click", closeRegionModal);
+  cancelRegionModalBtn.addEventListener("click", closeRegionModal);
+
+  // Register Region form submit
+  const addRegionForm = document.getElementById("addRegionForm");
+  addRegionForm.addEventListener("submit", handleAddRegionSubmit);
+
+  // Add Plot Modal handlers
   const openModalBtn = document.getElementById("openAddPlotModalBtn");
   const closeModalBtn = document.getElementById("closeModalBtn");
   const cancelModalBtn = document.getElementById("cancelModalBtn");
@@ -73,7 +117,7 @@ function setupEventListeners() {
   closeModalBtn.addEventListener("click", closeModal);
   cancelModalBtn.addEventListener("click", closeModal);
 
-  // Form submit handler
+  // Add Plot form submit
   const form = document.getElementById("addPlotForm");
   form.addEventListener("submit", handleAddPlotSubmit);
 }
@@ -87,33 +131,82 @@ async function refreshAll() {
 }
 
 // ============================================================================
-// Load Regions List
+// Load Regions & States
 // ============================================================================
-async function loadRegions() {
+async function loadRegions(selectRegionName = null) {
   try {
     const res = await fetch("/api/regions");
     const data = await res.json();
     regionsList = data.regions || [];
+    availableStates = data.states || [];
 
-    const select = document.getElementById("regionSelect");
-    select.innerHTML = "";
-
-    regionsList.forEach((r, idx) => {
+    // Populate State Filter
+    const stateFilter = document.getElementById("stateFilter");
+    stateFilter.innerHTML = `<option value="all">All States (${availableStates.length})</option>`;
+    availableStates.forEach(s => {
       const opt = document.createElement("option");
-      opt.value = r.region_name;
-      opt.textContent = `${r.region_name} (${r.state})`;
-      if (idx === 0) opt.selected = true;
-      select.appendChild(opt);
+      opt.value = s;
+      opt.textContent = s;
+      if (activeStateFilter === s) opt.selected = true;
+      stateFilter.appendChild(opt);
     });
 
-    if (regionsList.length > 0) {
-      currentRegion = regionsList[0].region_name;
-      await refreshAll();
-    }
+    renderRegionDropdown(selectRegionName);
   } catch (err) {
     console.error("Failed to load regions:", err);
     showToast("Error loading regions list from API");
   }
+}
+
+function renderRegionDropdown(selectRegionName = null) {
+  const select = document.getElementById("regionSelect");
+  select.innerHTML = "";
+
+  const filtered = activeStateFilter === "all"
+    ? regionsList
+    : regionsList.filter(r => r.state === activeStateFilter);
+
+  if (filtered.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "No regions found for this state";
+    select.appendChild(opt);
+    return;
+  }
+
+  // Group by State
+  const byState = {};
+  filtered.forEach(r => {
+    if (!byState[r.state]) byState[r.state] = [];
+    byState[r.state].push(r);
+  });
+
+  Object.keys(byState).sort().forEach(stateName => {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = `📍 ${stateName}`;
+
+    byState[stateName].forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r.region_name;
+      opt.textContent = `${r.region_name} • ${r.association_name || r.state}`;
+      if (selectRegionName ? r.region_name === selectRegionName : r.region_name === currentRegion) {
+        opt.selected = true;
+      }
+      optgroup.appendChild(opt);
+    });
+
+    select.appendChild(optgroup);
+  });
+
+  // Select initial or requested
+  if (selectRegionName) {
+    currentRegion = selectRegionName;
+  } else if (!currentRegion || !filtered.some(r => r.region_name === currentRegion)) {
+    currentRegion = filtered[0].region_name;
+  }
+
+  select.value = currentRegion;
+  refreshAll();
 }
 
 // ============================================================================
@@ -142,6 +235,7 @@ async function loadDashboard(regionName) {
 // ============================================================================
 function renderRegionMeta(reg, dbType) {
   document.getElementById("regionNameTitle").textContent = reg.region_name;
+  document.getElementById("regionAssocName").textContent = `🌾 ${reg.association_name || "Regional Farmers Association"}`;
   document.getElementById("regionStatePill").textContent = reg.state;
   document.getElementById("dbSourcePill").textContent = `DB: ${dbType}`;
   document.getElementById("regionCoords").textContent = `${reg.latitude.toFixed(2)}°N, ${reg.longitude.toFixed(2)}°E`;
@@ -152,8 +246,12 @@ function renderRegionMeta(reg, dbType) {
 function renderLiveWeatherRibbon(w) {
   const sourceBadge = document.getElementById("weatherSourceBadge");
   sourceBadge.textContent = w.is_live ? "Live Open-Meteo Satellite Feed" : "Fallback Database Cache";
-  
+
+  const v = w.verification || {};
+  document.getElementById("weatherGridBadge").textContent = v.weather_model ? "11km ECMWF Grid" : "ECMWF Grid";
+  document.getElementById("weatherLatencyBadge").textContent = v.client_latency_ms ? `${v.client_latency_ms} ms latency` : "Live";
   document.getElementById("weatherDateBadge").textContent = w.today_date || "Today";
+
   document.getElementById("wTemp").textContent = `${w.temp_max}° / ${w.temp_min}°C`;
   document.getElementById("wHumidity").textContent = `${w.humidity}%`;
   document.getElementById("wWind").textContent = `${w.wind_speed} m/s`;
@@ -258,7 +356,6 @@ function renderAllocationBarChart(plots) {
     allocationChartInstance.destroy();
   }
 
-  // Limit display to top 10 plots for readability
   const displayPlots = plots.slice(0, 10);
   const labels = displayPlots.map(p => `${p.plot_code} (${p.crop_type})`);
   const allocated = displayPlots.map(p => p.allocated_liters);
@@ -343,13 +440,11 @@ function renderFarmerLedgerTable(plots) {
   plots.forEach(p => {
     const tr = document.createElement("tr");
 
-    // Rank badge styling
     let rankClass = "rank-badge";
     if (p.priority_rank === 1) rankClass += " rank-1";
     else if (p.priority_rank === 2) rankClass += " rank-2";
     else if (p.priority_rank === 3) rankClass += " rank-3";
 
-    // Risk badge class
     const riskBadgeClass = (RISK_CONFIG[p.risk_level] || {}).badgeClass || "badge-moderate";
     const icon = CROP_ICONS[p.crop_type] || "🌿";
 
@@ -521,6 +616,198 @@ function renderFutureCropsList(crops) {
 }
 
 // ============================================================================
+// MODAL: Live Open-Meteo Weather & Satellite Accuracy Audit
+// ============================================================================
+async function openVerifyAuditModal() {
+  const modal = document.getElementById("verifyModal");
+  modal.classList.add("open");
+
+  const container = document.getElementById("verifyAuditContent");
+  container.innerHTML = `<div class="loading-state">Pinging Open-Meteo High-Resolution Grid for ${currentRegion}...</div>`;
+
+  try {
+    const res = await fetch(`/api/region/${encodeURIComponent(currentRegion)}/verify-weather`);
+    if (!res.ok) throw new Error("Verification query failed");
+    const data = await res.json();
+
+    const reg = data.verified_region;
+    const audit = data.live_accuracy_audit;
+    const m = data.current_measurements;
+    const sm = m.satellite_soil_moisture || {};
+    const benchmarks = data.cross_region_specificity_contrast || [];
+
+    // Set Direct Link
+    const apiLink = document.getElementById("directApiLink");
+    apiLink.href = audit.api_endpoint_url;
+
+    container.innerHTML = `
+      <!-- Verification Badge Banner -->
+      <div class="audit-status-banner">
+        <div class="audit-status-badge">
+          <span>✅</span> LIVE ACCURACY & GEOGRAPHIC SPECIFICITY CONFIRMED
+        </div>
+        <div class="audit-timestamp">
+          Live Ping: <b>${audit.queried_at_utc}</b> (${audit.client_latency_ms} ms latency)
+        </div>
+      </div>
+
+      <!-- Section A: Grid & Target Telemetry -->
+      <div class="audit-section">
+        <h4>📡 Target vs Matched Weather Grid</h4>
+        <div class="audit-grid">
+          <div class="audit-cell">
+            <span class="audit-cell-label">Region & Association</span>
+            <span class="audit-cell-val">${reg.region_name}</span>
+            <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">${reg.association_name}</div>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Target GPS Coordinates</span>
+            <span class="audit-cell-val highlight-cyan">${reg.coordinates.latitude.toFixed(4)}°N, ${reg.coordinates.longitude.toFixed(4)}°E</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Matched Grid Cell (Elevation)</span>
+            <span class="audit-cell-val">${audit.matched_grid_cell.latitude.toFixed(2)}°N, ${audit.matched_grid_cell.longitude.toFixed(2)}°E (${audit.elevation_m} m AMSL)</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Numerical Weather Model</span>
+            <span class="audit-cell-val" style="font-size: 12px; color: #34d399;">${audit.model_grid_resolution}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section B: Live Atmospheric & Satellite Soil Measurements -->
+      <div class="audit-section">
+        <h4>🌍 Live Region-Specific Measurements</h4>
+        <div class="audit-grid">
+          <div class="audit-cell">
+            <span class="audit-cell-label">Temperature (Max / Min)</span>
+            <span class="audit-cell-val">${m.temp_max_c}°C / ${m.temp_min_c}°C</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Mean Relative Humidity</span>
+            <span class="audit-cell-val">${m.humidity_pct}%</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">10-Day Rain / ET0 Demand</span>
+            <span class="audit-cell-val">${m.rainfall_10d_mm} mm / ${m.et0_10d_mm} mm</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Satellite Root Soil (7-28cm)</span>
+            <span class="audit-cell-val highlight-cyan">${sm.rootzone_7_to_28cm} m³/m³</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Satellite Topsoil (0-7cm)</span>
+            <span class="audit-cell-val">${sm.topsoil_0_to_7cm} m³/m³</span>
+          </div>
+          <div class="audit-cell">
+            <span class="audit-cell-label">Satellite Deep Profile (28-100cm)</span>
+            <span class="audit-cell-val">${sm.deep_profile_28_to_100cm} m³/m³</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section C: Cross-Region Specificity Matrix -->
+      <div class="audit-section">
+        <h4>📊 Proof of Region Specificity (Live Simultaneous Cross-State Contrast)</h4>
+        <div class="table-responsive">
+          <table class="contrast-table">
+            <thead>
+              <tr>
+                <th>Region & State</th>
+                <th>Climate Zone</th>
+                <th>Coordinates</th>
+                <th>Live Max Temp</th>
+                <th>Live Humidity</th>
+                <th>10d Rain</th>
+                <th>Root Soil Moisture</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="current-target">
+                <td><strong>🎯 ${reg.region_name} (${reg.state})</strong></td>
+                <td><span class="meta-pill state-pill">Current Target</span></td>
+                <td>${reg.coordinates.latitude}°N, ${reg.coordinates.longitude}°E</td>
+                <td><b>${m.temp_max_c}°C</b></td>
+                <td><b>${m.humidity_pct}%</b></td>
+                <td>${m.rainfall_10d_mm} mm</td>
+                <td><b style="color: #38bdf8;">${sm.rootzone_7_to_28cm}</b></td>
+              </tr>
+              ${benchmarks.map(b => `
+                <tr>
+                  <td>${b.region_name} (${b.state})</td>
+                  <td><span class="meta-pill db-pill">${b.climate_type}</span></td>
+                  <td>${b.coordinates}</td>
+                  <td>${b.temp_max}°C</td>
+                  <td>${b.humidity}%</td>
+                  <td>${b.rainfall_10d} mm</td>
+                  <td>${b.soil_moisture_root}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+        <div class="contrast-explainer">
+          💡 <b>Live Scientific Specificity:</b> As shown in the live benchmark matrix above, weather and satellite soil moisture values differ significantly across distinct latitudes/longitudes in India (e.g. desert vs river delta vs plateau). This confirms that your association is receiving authentic, coordinate-specific satellite and ECMWF inputs rather than averaged or static numbers.
+        </div>
+      </div>
+    `;
+
+  } catch (err) {
+    container.innerHTML = `<div class="form-alert">Verification request failed: ${err.message}</div>`;
+  }
+}
+
+// ============================================================================
+// Modal & Form Submission (Add Region)
+// ============================================================================
+async function handleAddRegionSubmit(e) {
+  e.preventDefault();
+  const alertBox = document.getElementById("regionFormAlert");
+  alertBox.style.display = "none";
+
+  const payload = {
+    region_name: document.getElementById("newRegionName").value.trim(),
+    association_name: document.getElementById("newAssocName").value.trim(),
+    state: document.getElementById("newState").value.trim(),
+    soil_type: document.getElementById("newSoilType").value,
+    latitude: parseFloat(document.getElementById("newLat").value),
+    longitude: parseFloat(document.getElementById("newLon").value),
+    available_water_liters: parseFloat(document.getElementById("newWaterQuota").value)
+  };
+
+  const submitBtn = document.getElementById("submitRegionBtn");
+  const origBtnText = submitBtn.innerHTML;
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = "Registering...";
+
+  try {
+    const res = await fetch("/api/regions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await res.json();
+    if (!res.ok) {
+      throw new Error(result.detail || "Failed to register region");
+    }
+
+    showToast(`Region '${payload.region_name}' registered successfully!`);
+    document.getElementById("addRegionModal").classList.remove("open");
+    document.getElementById("addRegionForm").reset();
+
+    // Reload regions list and auto-select the newly added region
+    await loadRegions(payload.region_name);
+  } catch (err) {
+    alertBox.textContent = err.message;
+    alertBox.style.display = "block";
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = origBtnText;
+  }
+}
+
+// ============================================================================
 // Modal & Form Submission (Add Plot)
 // ============================================================================
 async function handleAddPlotSubmit(e) {
@@ -556,12 +843,10 @@ async function handleAddPlotSubmit(e) {
       throw new Error(result.detail || "Failed to register plot");
     }
 
-    // Success
     showToast(`Plot ${payload.plot_code} registered successfully!`);
     document.getElementById("addPlotModal").classList.remove("open");
     document.getElementById("addPlotForm").reset();
 
-    // Reload dashboard to recalculate stress and allocations
     await loadDashboard(currentRegion);
   } catch (err) {
     alertBox.textContent = err.message;

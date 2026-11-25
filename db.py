@@ -81,42 +81,63 @@ class DatabaseManager:
                     cursor.execute(stmt)
             conn.commit()
 
-        # Check if regions are populated
-        cursor.execute("SELECT COUNT(*) AS cnt FROM regions")
-        res = cursor.fetchone()
-        if res and res["cnt"] == 0:
-            print("[DB] Seeding MySQL with default agricultural regions and plots...")
-            for r in REGIONS_DATA:
+        # Check column association_name
+        try:
+            cursor.execute("SELECT association_name FROM regions LIMIT 1")
+        except Exception:
+            cursor.execute("ALTER TABLE regions ADD COLUMN association_name VARCHAR(150) NOT NULL DEFAULT 'Regional Agricultural Association'")
+            conn.commit()
+
+        # Seed or update all regions
+        for r in REGIONS_DATA:
+            cursor.execute(
+                """
+                INSERT INTO regions (
+                    region_name, association_name, state, latitude, longitude, soil_type, available_water_liters,
+                    temp_max, temp_min, humidity, wind_speed, solar_radiation, rainfall_10d, et0_10d
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    association_name=VALUES(association_name),
+                    state=VALUES(state),
+                    latitude=VALUES(latitude),
+                    longitude=VALUES(longitude),
+                    soil_type=VALUES(soil_type),
+                    available_water_liters=VALUES(available_water_liters)
+                """,
+                (
+                    r["region_name"], r.get("association_name", "Regional Agricultural Association"),
+                    r["state"], r["latitude"], r["longitude"], r["soil_type"],
+                    r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
+                    r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
+                )
+            )
+            cursor.execute("SELECT id FROM regions WHERE region_name = %s", (r["region_name"],))
+            reg_id = cursor.fetchone()["id"]
+
+            plots = PLOTS_DATA.get(r["region_name"], [])
+            for p in plots:
                 cursor.execute(
                     """
-                    INSERT INTO regions (
-                        region_name, state, latitude, longitude, soil_type, available_water_liters,
-                        temp_max, temp_min, humidity, wind_speed, solar_radiation, rainfall_10d, et0_10d
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO region_plots (
+                        region_id, plot_code, farmer_name, crop_type, growth_stage,
+                        area_acres, soil_moisture_top, soil_moisture_root, soil_moisture_prof, prev_soil_moisture_root
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        farmer_name=VALUES(farmer_name),
+                        crop_type=VALUES(crop_type),
+                        growth_stage=VALUES(growth_stage),
+                        area_acres=VALUES(area_acres),
+                        soil_moisture_top=VALUES(soil_moisture_top),
+                        soil_moisture_root=VALUES(soil_moisture_root),
+                        soil_moisture_prof=VALUES(soil_moisture_prof),
+                        prev_soil_moisture_root=VALUES(prev_soil_moisture_root)
                     """,
                     (
-                        r["region_name"], r["state"], r["latitude"], r["longitude"], r["soil_type"],
-                        r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
-                        r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
+                        reg_id, p["plot_code"], p["farmer_name"], p["crop_type"], p["growth_stage"],
+                        p["area_acres"], p["sm_top"], p["sm_root"], p["sm_prof"], p["prev_sm"]
                     )
                 )
-                reg_id = cursor.lastrowid
-                plots = PLOTS_DATA.get(r["region_name"], [])
-                for p in plots:
-                    cursor.execute(
-                        """
-                        INSERT INTO region_plots (
-                            region_id, plot_code, farmer_name, crop_type, growth_stage,
-                            area_acres, soil_moisture_top, soil_moisture_root, soil_moisture_prof, prev_soil_moisture_root
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            reg_id, p["plot_code"], p["farmer_name"], p["crop_type"], p["growth_stage"],
-                            p["area_acres"], p["sm_top"], p["sm_root"], p["sm_prof"], p["prev_sm"]
-                        )
-                    )
-            conn.commit()
-            print("[DB] MySQL seeded successfully.")
+        conn.commit()
         cursor.close()
         conn.close()
 
@@ -128,6 +149,7 @@ class DatabaseManager:
             CREATE TABLE IF NOT EXISTS regions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 region_name TEXT NOT NULL UNIQUE,
+                association_name TEXT DEFAULT 'Regional Agricultural Association',
                 state TEXT NOT NULL,
                 latitude REAL NOT NULL,
                 longitude REAL NOT NULL,
@@ -165,49 +187,79 @@ class DatabaseManager:
         )
         conn.commit()
 
-        cursor.execute("SELECT COUNT(*) FROM regions")
-        cnt = cursor.fetchone()[0]
-        if cnt == 0:
-            print("[DB] Seeding SQLite database with default agricultural regions and plots...")
-            for r in REGIONS_DATA:
+        # Migration: ensure association_name column exists
+        cursor.execute("PRAGMA table_info(regions);")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "association_name" not in columns:
+            cursor.execute("ALTER TABLE regions ADD COLUMN association_name TEXT DEFAULT 'Regional Agricultural Association';")
+            conn.commit()
+
+        # Seed or sync all 12 regions and plots
+        print(f"[DB] Syncing {len(REGIONS_DATA)} agricultural regions and plots into SQLite...")
+        for r in REGIONS_DATA:
+            cursor.execute(
+                """
+                INSERT INTO regions (
+                    region_name, association_name, state, latitude, longitude, soil_type, available_water_liters,
+                    temp_max, temp_min, humidity, wind_speed, solar_radiation, rainfall_10d, et0_10d
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(region_name) DO UPDATE SET
+                    association_name=excluded.association_name,
+                    state=excluded.state,
+                    latitude=excluded.latitude,
+                    longitude=excluded.longitude,
+                    soil_type=excluded.soil_type,
+                    available_water_liters=excluded.available_water_liters
+                """,
+                (
+                    r["region_name"], r.get("association_name", "Regional Agricultural Association"),
+                    r["state"], r["latitude"], r["longitude"], r["soil_type"],
+                    r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
+                    r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
+                )
+            )
+            cursor.execute("SELECT id FROM regions WHERE region_name = ?", (r["region_name"],))
+            reg_id = cursor.fetchone()[0]
+
+            plots = PLOTS_DATA.get(r["region_name"], [])
+            for p in plots:
                 cursor.execute(
                     """
-                    INSERT INTO regions (
-                        region_name, state, latitude, longitude, soil_type, available_water_liters,
-                        temp_max, temp_min, humidity, wind_speed, solar_radiation, rainfall_10d, et0_10d
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO region_plots (
+                        region_id, plot_code, farmer_name, crop_type, growth_stage,
+                        area_acres, soil_moisture_top, soil_moisture_root, soil_moisture_prof, prev_soil_moisture_root
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(plot_code) DO UPDATE SET
+                        farmer_name=excluded.farmer_name,
+                        crop_type=excluded.crop_type,
+                        growth_stage=excluded.growth_stage,
+                        area_acres=excluded.area_acres,
+                        soil_moisture_top=excluded.soil_moisture_top,
+                        soil_moisture_root=excluded.soil_moisture_root,
+                        soil_moisture_prof=excluded.soil_moisture_prof,
+                        prev_soil_moisture_root=excluded.prev_soil_moisture_root
                     """,
                     (
-                        r["region_name"], r["state"], r["latitude"], r["longitude"], r["soil_type"],
-                        r["available_water_liters"], r["temp_max"], r["temp_min"], r["humidity"],
-                        r["wind_speed"], r["solar_radiation"], r["rainfall_10d"], r["et0_10d"]
+                        reg_id, p["plot_code"], p["farmer_name"], p["crop_type"], p["growth_stage"],
+                        p["area_acres"], p["sm_top"], p["sm_root"], p["sm_prof"], p["prev_sm"]
                     )
                 )
-                reg_id = cursor.lastrowid
-                plots = PLOTS_DATA.get(r["region_name"], [])
-                for p in plots:
-                    cursor.execute(
-                        """
-                        INSERT INTO region_plots (
-                            region_id, plot_code, farmer_name, crop_type, growth_stage,
-                            area_acres, soil_moisture_top, soil_moisture_root, soil_moisture_prof, prev_soil_moisture_root
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            reg_id, p["plot_code"], p["farmer_name"], p["crop_type"], p["growth_stage"],
-                            p["area_acres"], p["sm_top"], p["sm_root"], p["sm_prof"], p["prev_sm"]
-                        )
-                    )
-            conn.commit()
-            print("[DB] SQLite database seeded successfully.")
+        conn.commit()
         cursor.close()
         conn.close()
 
-    def get_all_regions(self) -> List[Dict[str, Any]]:
+    def get_all_regions(self, state_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM regions"
+        params = []
+        if state_filter and state_filter.lower() != "all":
+            query += " WHERE state = %s" if self.use_mysql else " WHERE state = ?"
+            params.append(state_filter)
+        query += " ORDER BY state ASC, region_name ASC"
+
         if self.use_mysql:
             conn = self._get_mysql_connection()
             cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM regions ORDER BY id ASC")
+            cursor.execute(query, tuple(params))
             rows = cursor.fetchall()
             cursor.close()
             conn.close()
@@ -216,7 +268,7 @@ class DatabaseManager:
             conn = sqlite3.connect(SQLITE_DB_PATH)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM regions ORDER BY id ASC")
+            cursor.execute(query, tuple(params))
             rows = [dict(r) for r in cursor.fetchall()]
             cursor.close()
             conn.close()
@@ -240,6 +292,58 @@ class DatabaseManager:
             cursor.close()
             conn.close()
             return dict(row) if row else None
+
+    def add_region(self, region_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Allows a farmer association or cooperative to register a new region."""
+        fields = [
+            "region_name", "association_name", "state", "latitude", "longitude",
+            "soil_type", "available_water_liters", "temp_max", "temp_min", "humidity",
+            "wind_speed", "solar_radiation", "rainfall_10d", "et0_10d"
+        ]
+        values = [
+            region_data["region_name"],
+            region_data.get("association_name", f"{region_data['region_name']} Farmers Association"),
+            region_data["state"],
+            float(region_data["latitude"]),
+            float(region_data["longitude"]),
+            region_data["soil_type"],
+            float(region_data.get("available_water_liters", 500000.0)),
+            float(region_data.get("temp_max", 34.0)),
+            float(region_data.get("temp_min", 24.0)),
+            float(region_data.get("humidity", 55.0)),
+            float(region_data.get("wind_speed", 2.5)),
+            float(region_data.get("solar_radiation", 18.0)),
+            float(region_data.get("rainfall_10d", 5.0)),
+            float(region_data.get("et0_10d", 45.0)),
+        ]
+
+        if self.use_mysql:
+            conn = self._get_mysql_connection()
+            cursor = conn.cursor(dictionary=True)
+            cols = ", ".join(fields)
+            placeholders = ", ".join(["%s"] * len(fields))
+            cursor.execute(f"INSERT INTO regions ({cols}) VALUES ({placeholders})", tuple(values))
+            conn.commit()
+            new_id = cursor.lastrowid
+            cursor.execute("SELECT * FROM regions WHERE id = %s", (new_id,))
+            created = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            return created
+        else:
+            conn = sqlite3.connect(SQLITE_DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cols = ", ".join(fields)
+            placeholders = ", ".join(["?"] * len(fields))
+            cursor.execute(f"INSERT INTO regions ({cols}) VALUES ({placeholders})", tuple(values))
+            conn.commit()
+            new_id = cursor.lastrowid
+            cursor.execute("SELECT * FROM regions WHERE id = ?", (new_id,))
+            created = dict(cursor.fetchone())
+            cursor.close()
+            conn.close()
+            return created
 
     def get_plots_for_region(self, region_id: int) -> List[Dict[str, Any]]:
         if self.use_mysql:

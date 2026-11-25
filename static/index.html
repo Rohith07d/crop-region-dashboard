@@ -17,19 +17,39 @@
         <div class="brand-icon">🌱</div>
         <div>
           <h1>AgriStress Regional Intelligence</h1>
-          <p class="subtitle">Real-Time Open-Meteo Satellite Feed • FAO-56 Stress Modeling • Priority Water Allocation</p>
+          <p class="subtitle">Open-Meteo Satellite Feed • FAO-56 Stress Modeling • Farmer & Association Water Ledger</p>
         </div>
       </div>
+
       <div class="header-controls">
-        <div class="region-selector-wrap">
-          <label for="regionSelect">Agricultural Region:</label>
-          <select id="regionSelect" class="region-select">
+        <!-- State Filter Dropdown -->
+        <div class="control-box">
+          <label for="stateFilter">State / Zone:</label>
+          <select id="stateFilter" class="select-input">
+            <option value="all">All States</option>
+          </select>
+        </div>
+
+        <!-- Region & Association Selector -->
+        <div class="control-box region-box">
+          <label for="regionSelect">Region / Association:</label>
+          <select id="regionSelect" class="select-input region-select">
             <option value="" disabled selected>Loading regions...</option>
           </select>
         </div>
-        <button id="refreshBtn" class="btn btn-secondary" title="Refresh Live Weather & Recalculate">
-          <span class="refresh-icon">🔄</span> Sync Live Data
-        </button>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="verifyWeatherBtn" class="btn btn-verify" title="Verify Live Weather Accuracy & Region Specificity">
+            <span>🛡️</span> Verify Live Data
+          </button>
+          <button id="openAddRegionModalBtn" class="btn btn-secondary" title="Register New Farmer Association / Region">
+            <span>➕</span> Add Region
+          </button>
+          <button id="refreshBtn" class="btn btn-secondary" title="Sync Latest Open-Meteo Data">
+            <span class="refresh-icon">🔄</span> Sync
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -41,22 +61,32 @@
     <section class="region-banner">
       <div class="region-meta-card">
         <div class="region-meta-header">
-          <h2 id="regionNameTitle">—</h2>
-          <span id="regionStatePill" class="meta-pill state-pill">—</span>
-          <span id="dbSourcePill" class="meta-pill db-pill">DB: Connecting...</span>
+          <div>
+            <h2 id="regionNameTitle">—</h2>
+            <div id="regionAssocName" class="association-title">—</div>
+          </div>
+          <div class="meta-badges">
+            <span id="regionStatePill" class="meta-pill state-pill">—</span>
+            <span id="dbSourcePill" class="meta-pill db-pill">DB: Connecting...</span>
+          </div>
         </div>
+
         <div class="region-meta-details">
           <div class="meta-item">
-            <span class="meta-label">Coordinates</span>
+            <span class="meta-label">GPS Coordinates</span>
             <span id="regionCoords" class="meta-val">—</span>
           </div>
           <div class="meta-item">
-            <span class="meta-label">Dominant Soil</span>
+            <span class="meta-label">Dominant Soil Type</span>
             <span id="regionSoil" class="meta-val soil-val">—</span>
           </div>
           <div class="meta-item">
-            <span class="meta-label">Total Water Reservoir</span>
+            <span class="meta-label">Regional Water Reservoir</span>
             <span id="regionWaterQuota" class="meta-val highlight-val">—</span>
+          </div>
+          <div class="meta-item no-border">
+            <span class="meta-label">Live Data Verification</span>
+            <button id="quickVerifyBtn" class="btn-link">🔍 Audit Accuracy & Specificity</button>
           </div>
         </div>
       </div>
@@ -66,10 +96,15 @@
         <div class="weather-ribbon-header">
           <div class="live-indicator">
             <span class="live-dot"></span>
-            <span id="weatherSourceBadge">Open-Meteo Satellite Feed</span>
+            <span id="weatherSourceBadge">Live Open-Meteo Satellite Feed</span>
+            <span id="weatherGridBadge" class="grid-badge">11km ECMWF Grid</span>
           </div>
-          <span id="weatherDateBadge" class="date-badge">Today</span>
+          <div class="date-container">
+            <span id="weatherLatencyBadge" class="latency-badge">— ms</span>
+            <span id="weatherDateBadge" class="date-badge">Today</span>
+          </div>
         </div>
+
         <div class="weather-metrics-grid">
           <div class="w-metric">
             <span class="w-icon">🌡️</span>
@@ -109,21 +144,21 @@
           <div class="w-metric">
             <span class="w-icon">🌿</span>
             <div>
-              <span class="w-label">ET0 (10d)</span>
+              <span class="w-label">ET0 Demand (10d)</span>
               <span id="wEt0" class="w-value">— mm</span>
             </div>
           </div>
           <div class="w-metric highlight-sm">
             <span class="w-icon">🛰️</span>
             <div>
-              <span class="w-label">Satellite Root Soil (7-28cm)</span>
+              <span class="w-label">Satellite Root Moisture (7-28cm)</span>
               <span id="wSoilRoot" class="w-value sm-highlight">— m³/m³</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">🌍</span>
             <div>
-              <span class="w-label">Top / Prof Soil (0-7 / 28-100cm)</span>
+              <span class="w-label">Top / Deep Profile (0-7 / 28-100cm)</span>
               <span id="wSoilTopProf" class="w-value">— / —</span>
             </div>
           </div>
@@ -308,7 +343,102 @@
 
   </main>
 
-  <!-- Add Plot Modal -->
+  <!-- =========================================================================
+       MODAL 1: Live Data Accuracy & Region-Specificity Verification Inspector
+       ========================================================================= -->
+  <div id="verifyModal" class="modal-backdrop">
+    <div class="modal-card modal-large">
+      <div class="modal-header">
+        <div class="modal-header-brand">
+          <span class="audit-icon">🛡️</span>
+          <div>
+            <h3>Live Open-Meteo Weather & Satellite Accuracy Audit</h3>
+            <p class="modal-subtitle">Direct Grid Verification, Latency Telemetry, and Cross-Region Specificity Contrast</p>
+          </div>
+        </div>
+        <button id="closeVerifyModalBtn" class="close-btn">&times;</button>
+      </div>
+
+      <div class="modal-body audit-body" id="verifyAuditContent">
+        <div class="loading-state">Performing live multi-region telemetry ping...</div>
+      </div>
+
+      <div class="modal-footer">
+        <a id="directApiLink" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+          <span>🔗</span> Open Direct JSON API Feed
+        </a>
+        <button type="button" id="closeVerifyBtn2" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 2: Register New Association / Region
+       ========================================================================= -->
+  <div id="addRegionModal" class="modal-backdrop">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Register New Agricultural Region / Association</h3>
+        <button id="closeRegionModalBtn" class="close-btn">&times;</button>
+      </div>
+      <form id="addRegionForm" class="modal-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newRegionName">Region Name *</label>
+            <input type="text" id="newRegionName" required placeholder="e.g. Kurnool Seed Hub" />
+          </div>
+          <div class="form-group">
+            <label for="newAssocName">Association / Cooperative Name *</label>
+            <input type="text" id="newAssocName" required placeholder="e.g. Kurnool Farmers Collective" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newState">State *</label>
+            <input type="text" id="newState" required placeholder="e.g. Andhra Pradesh" />
+          </div>
+          <div class="form-group">
+            <label for="newSoilType">Dominant Soil Type *</label>
+            <select id="newSoilType" required>
+              <option value="Black_Clay">Black Clay (Vertisol)</option>
+              <option value="Red_Sandy">Red Sandy (Alfisols)</option>
+              <option value="Alluvial_Loam" selected>Alluvial Loam (Inceptisols)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="newLat">Latitude (°N) *</label>
+            <input type="number" id="newLat" required step="0.0001" min="-90" max="90" value="15.8281" />
+          </div>
+          <div class="form-group">
+            <label for="newLon">Longitude (°E) *</label>
+            <input type="number" id="newLon" required step="0.0001" min="-180" max="180" value="78.0373" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="newWaterQuota">Water Reservoir Quota (Liters) *</label>
+          <input type="number" id="newWaterQuota" required step="1000" min="10000" value="600000" />
+        </div>
+
+        <div id="regionFormAlert" class="form-alert" style="display: none;"></div>
+
+        <div class="modal-footer">
+          <button type="button" id="cancelRegionModalBtn" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="submitRegionBtn" class="btn btn-primary">
+            <span class="btn-text">Register & Initialize Region</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL 3: Add Plot Modal
+       ========================================================================= -->
   <div id="addPlotModal" class="modal-backdrop">
     <div class="modal-card">
       <div class="modal-header">
@@ -397,7 +527,7 @@
   <div id="toast" class="toast"></div>
 
   <footer class="app-footer">
-    <p>AgriStress Regional Platform • Powered by Open-Meteo API, Scikit-Learn Random Forest Regressor & Classifier</p>
+    <p>AgriStress Regional Platform • Verified High-Resolution Open-Meteo Satellite Feed • FAO-56 Stress Modeling & Water Allocation</p>
   </footer>
 
   <script src="/static/app.js"></script>
