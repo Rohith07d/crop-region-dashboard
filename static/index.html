@@ -36,7 +36,18 @@
         <div class="control-box" id="clusterControlBox" title="Click to choose a farm cluster">
           <label for="clusterSelect">Farm Cluster:</label>
           <select id="clusterSelect" class="select-input cluster-select">
-            <option value="" disabled selected>Loading farm clusters...</option>
+            <optgroup label="📍 Telangana">
+              <option value="Shadnagar Ayacut Cluster" selected>Shadnagar Ayacut Cluster (Red Sandy)</option>
+              <option value="Miryalaguda Canal Command">Miryalaguda Canal Command (Black Clay)</option>
+              <option value="Bodhan Nizamsagar Block">Bodhan Nizamsagar Block (Black Clay)</option>
+              <option value="Siddipet Komaticheruvu Farms">Siddipet Komaticheruvu Farms (Red Sandy)</option>
+            </optgroup>
+            <optgroup label="📍 Andhra Pradesh">
+              <option value="Tenali Western Canal Block">Tenali Western Canal Block (Alluvial Loam)</option>
+              <option value="Anantapur Tadipatri Drip Zone">Anantapur Tadipatri Drip Zone (Red Sandy)</option>
+              <option value="Bhimavaram Godavari Delta Block">Bhimavaram Godavari Delta Block (Alluvial Loam)</option>
+              <option value="Nandyal KC Canal Ayacut">Nandyal KC Canal Ayacut (Black Clay)</option>
+            </optgroup>
           </select>
         </div>
 
@@ -431,6 +442,6 @@
     <p>AgriStress Farmer Water & Crop Allocator • Powered by Open-Meteo High-Resolution Satellite Feed & FAO-56 Agronomic Random Forest</p>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=3.5"></script>
 </body>
 </html>

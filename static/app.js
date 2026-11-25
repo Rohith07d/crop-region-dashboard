@@ -4,9 +4,21 @@
  * Interactive Field Planning, Open-Meteo Integration, and Dynamic Agronomic Allocations
  */
 
+// Built-in Farm Clusters Fallback (AP & Telangana)
+const FALLBACK_CLUSTERS = [
+  { region_name: "Shadnagar Ayacut Cluster", state: "Telangana", soil_type: "Red_Sandy", latitude: 17.07, longitude: 78.21, association_name: "Shadnagar Red Soil Farmers Ayacut Union" },
+  { region_name: "Miryalaguda Canal Command", state: "Telangana", soil_type: "Black_Clay", latitude: 16.87, longitude: 79.56, association_name: "Nagarjuna Sagar Left Canal Farmers Society" },
+  { region_name: "Bodhan Nizamsagar Block", state: "Telangana", soil_type: "Black_Clay", latitude: 18.66, longitude: 77.88, association_name: "Nizamsagar Distributary Ayacut Committee" },
+  { region_name: "Siddipet Komaticheruvu Farms", state: "Telangana", soil_type: "Red_Sandy", latitude: 18.10, longitude: 78.85, association_name: "Komaticheruvu Tank Irrigation Collective" },
+  { region_name: "Tenali Western Canal Block", state: "Andhra Pradesh", soil_type: "Alluvial_Loam", latitude: 16.24, longitude: 80.64, association_name: "Krishna Western Delta Water Users Association" },
+  { region_name: "Anantapur Tadipatri Drip Zone", state: "Andhra Pradesh", soil_type: "Red_Sandy", latitude: 14.91, longitude: 78.01, association_name: "Tadipatri Micro-Irrigation Growers Federation" },
+  { region_name: "Bhimavaram Godavari Delta Block", state: "Andhra Pradesh", soil_type: "Alluvial_Loam", latitude: 16.54, longitude: 81.52, association_name: "Godavari Western Canal Ayacut Council" },
+  { region_name: "Nandyal KC Canal Ayacut", state: "Andhra Pradesh", soil_type: "Black_Clay", latitude: 15.48, longitude: 78.48, association_name: "Kurnool-Cuddapah Canal Farmers Union" }
+];
+
 // Application State
-let allClusters = [];
-let currentClusterName = "";
+let allClusters = [...FALLBACK_CLUSTERS];
+let currentClusterName = "Shadnagar Ayacut Cluster";
 let activeStateFilter = "all";
 let availableWaterLiters = 50000;
 let waterSourceType = "Borewell";
@@ -67,31 +79,55 @@ const CROP_ICONS = {
 const GROWTH_STAGES = ["Initial", "Development", "Mid_Season", "Late_Season"];
 
 // ============================================================================
-// Initialization & Event Binding
+// Initialization & Event Binding (Safe from DOM Ready / Caching States)
 // ============================================================================
-document.addEventListener("DOMContentLoaded", async () => {
-  setupEventListeners();
-  await loadClusters();
-});
+function initApp() {
+  if (window.location.protocol === "file:") {
+    const banner = document.createElement("div");
+    banner.style.cssText = "background: #9E2A2B; color: #FFFFFF; padding: 12px 20px; font-weight: bold; text-align: center; font-size: 13px; position: sticky; top: 0; z-index: 9999; box-shadow: 0 4px 10px rgba(0,0,0,0.3);";
+    banner.innerHTML = "⚠️ You opened index.html directly from disk (file://). Please navigate to <a href='http://localhost:8000' style='color: #F4F1E8; text-decoration: underline; margin-left: 6px;'>http://localhost:8000</a> in your browser to access the backend API and live Open-Meteo satellite feed.";
+    document.body.prepend(banner);
+  }
+
+  try {
+    setupEventListeners();
+  } catch (err) {
+    console.warn("Event listeners setup warning:", err);
+  }
+
+  // Pre-render dropdown immediately with built-in clusters
+  renderClusterDropdown();
+  loadClusters();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}
 
 function setupEventListeners() {
   // State filter
   const stateFilter = document.getElementById("stateFilter");
-  stateFilter.addEventListener("change", (e) => {
-    activeStateFilter = e.target.value;
-    renderClusterDropdown();
-  });
+  if (stateFilter) {
+    stateFilter.addEventListener("change", (e) => {
+      activeStateFilter = e.target.value;
+      renderClusterDropdown();
+    });
+  }
 
   // Cluster selector
   const clusterSelect = document.getElementById("clusterSelect");
-  clusterSelect.addEventListener("change", (e) => {
-    currentClusterName = e.target.value;
-    loadClusterDashboard(currentClusterName);
-  });
+  if (clusterSelect) {
+    clusterSelect.addEventListener("change", (e) => {
+      currentClusterName = e.target.value;
+      loadClusterDashboard(currentClusterName);
+    });
+  }
 
   // Cluster control box click opens select
   const clusterBox = document.getElementById("clusterControlBox");
-  if (clusterBox) {
+  if (clusterBox && clusterSelect) {
     clusterBox.addEventListener("click", (e) => {
       if (e.target.tagName !== "SELECT") {
         try { clusterSelect.showPicker(); } catch (err) { clusterSelect.focus(); }
@@ -131,58 +167,65 @@ function setupEventListeners() {
 
   // Sync live weather button
   const syncBtn = document.getElementById("syncWeatherBtn");
-  syncBtn.addEventListener("click", () => {
-    showToast("Re-fetching live Open-Meteo satellite feed...");
-    loadClusterDashboard(currentClusterName);
-  });
+  if (syncBtn) {
+    syncBtn.addEventListener("click", () => {
+      showToast("Re-fetching live Open-Meteo satellite feed...");
+      loadClusterDashboard(currentClusterName);
+    });
+  }
 
   // Water supply numeric input
   const waterInput = document.getElementById("waterSupplyInput");
   const waterSlider = document.getElementById("waterSupplySlider");
 
-  waterInput.addEventListener("change", (e) => {
-    const val = Math.max(1000, parseFloat(e.target.value) || 10000);
-    availableWaterLiters = val;
-    waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
-    simulateAllocation();
-  });
+  if (waterInput && waterSlider) {
+    waterInput.addEventListener("change", (e) => {
+      const val = Math.max(1000, parseFloat(e.target.value) || 10000);
+      availableWaterLiters = val;
+      waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
+      simulateAllocation();
+    });
 
-  // Water supply slider
-  waterSlider.addEventListener("input", (e) => {
-    const val = parseFloat(e.target.value);
-    availableWaterLiters = val;
-    waterInput.value = val;
-    simulateAllocation();
-  });
+    waterSlider.addEventListener("input", (e) => {
+      const val = parseFloat(e.target.value);
+      availableWaterLiters = val;
+      waterInput.value = val;
+      simulateAllocation();
+    });
+  }
 
   // Quick preset buttons
   document.querySelectorAll(".preset-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const val = parseFloat(btn.dataset.liters);
       availableWaterLiters = val;
-      waterInput.value = val;
-      waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
+      if (waterInput) waterInput.value = val;
+      if (waterSlider) waterSlider.value = Math.min(val, parseFloat(waterSlider.max));
       simulateAllocation();
     });
   });
 
   // Water source selector
   const waterSourceSelect = document.getElementById("waterSourceSelect");
-  waterSourceSelect.addEventListener("change", (e) => {
-    waterSourceType = e.target.value;
-    simulateAllocation();
-  });
+  if (waterSourceSelect) {
+    waterSourceSelect.addEventListener("change", (e) => {
+      waterSourceType = e.target.value;
+      simulateAllocation();
+    });
+  }
 
   // Add Plot Button
   const addPlotBtn = document.getElementById("addPlotBtn");
-  addPlotBtn.addEventListener("click", addNewFarmerPlot);
+  if (addPlotBtn) addPlotBtn.addEventListener("click", addNewFarmerPlot);
 
   // Recalculate Button
   const recalcBtn = document.getElementById("recalculateBtn");
-  recalcBtn.addEventListener("click", () => {
-    simulateAllocation();
-    showToast("Allocation recalculated with live ECMWF satellite feed.");
-  });
+  if (recalcBtn) {
+    recalcBtn.addEventListener("click", () => {
+      simulateAllocation();
+      showToast("Allocation recalculated with live ECMWF satellite feed.");
+    });
+  }
 }
 
 // ============================================================================
@@ -191,14 +234,16 @@ function setupEventListeners() {
 async function loadClusters() {
   try {
     const res = await fetch("/api/regions");
+    if (!res.ok) throw new Error("API status " + res.status);
     const data = await res.json();
-    allClusters = data.regions || [];
+    if (data.regions && data.regions.length > 0) {
+      allClusters = data.regions;
+    }
     supportedCrops = data.supported_crops || Object.keys(CROP_ICONS);
-
-    renderClusterDropdown();
   } catch (err) {
-    console.error("Failed to load farm clusters:", err);
-    showToast("Error loading farm clusters from API");
+    console.warn("Using built-in clusters:", err);
+  } finally {
+    renderClusterDropdown();
   }
 }
 
