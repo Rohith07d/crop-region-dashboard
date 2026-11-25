@@ -3,12 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AgriStress — Farmer Water & Crop Allocation Tool</title>
-  <link rel="stylesheet" href="/static/style.css?v=3.3">
+  <title data-i18n="meta.title">AgriStress — Farmer Water & Crop Allocation Tool</title>
+  <!-- Anti-caching headers for fresh updates -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <!-- Google Fonts for Telugu, Devanagari (Hindi), and Latin scripts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700;800&family=Noto+Sans+Telugu:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=3.8">
   <!-- Chart.js CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Multi-Language Translation Dictionary -->
+  <script src="/static/translations.js?v=3.8"></script>
 </head>
 <body>
+
+  <!-- Pre-Dashboard Welcome Language Selection Modal -->
+  <div id="welcomeLangModal" class="welcome-modal-backdrop" style="display: none;">
+    <div class="welcome-modal-card">
+      <div class="welcome-header">
+        <div class="welcome-icon">🌾</div>
+        <h2 data-i18n="modal.welcome_title">Welcome to AgriStress</h2>
+        <p class="welcome-subtitle" data-i18n="modal.welcome_sub">Choose your preferred language for interactive farm water & crop planning • మీ ప్రాధాన్య భాషను ఎంచుకోండి • अपनी पसंदीदा भाषा चुनें</p>
+      </div>
+
+      <div class="lang-card-grid">
+        <!-- English Card -->
+        <div class="lang-option-card" data-lang="en">
+          <div class="lang-card-badge">English</div>
+          <h3 class="lang-card-title">English</h3>
+          <p class="lang-card-desc">Interactive FAO-56 stress modeling, water budgeting, and satellite weather intelligence.</p>
+          <button class="btn btn-lang-primary" data-lang="en">
+            <span>Continue in English</span> <span>→</span>
+          </button>
+        </div>
+
+        <!-- Telugu Card -->
+        <div class="lang-option-card" data-lang="te">
+          <div class="lang-card-badge">తెలుగు</div>
+          <h3 class="lang-card-title">తెలుగు (Telugu)</h3>
+          <p class="lang-card-desc">ఆంధ్రప్రదేశ్ & తెలంగాణ రైతులకు అనుకూలమైన తెలుగు భాషలో సాగునీటి కేటాయింపు మరియు పంట రక్షణ సలహాలు.</p>
+          <button class="btn btn-lang-primary" data-lang="te">
+            <span>తెలుగులో కొనసాగండి</span> <span>→</span>
+          </button>
+        </div>
+
+        <!-- Hindi Card -->
+        <div class="lang-option-card" data-lang="hi">
+          <div class="lang-card-badge">हिन्दी</div>
+          <h3 class="lang-card-title">हिन्दी (Hindi)</h3>
+          <p class="lang-card-desc">फसल जल तनाव सूचकांक, मौसम पूर्वानुमान और खेत-स्तरीय सिंचाई आवंटन की पूरी जानकारी हिन्दी में।</p>
+          <button class="btn btn-lang-primary" data-lang="hi">
+            <span>हिन्दी में जारी रखें</span> <span>→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- App Header & Navigation Bar -->
   <header class="app-header">
@@ -16,33 +69,40 @@
       <div class="brand">
         <div class="brand-icon">🌾</div>
         <div>
-          <h1>AgriStress — Farmer Water & Crop Allocator</h1>
-          <p class="subtitle">Live Open-Meteo Satellite Feed • FAO-56 Stress Modeling • Interactive Field-Level Water Planner</p>
+          <h1 data-i18n="meta.title">AgriStress — Farmer Water & Crop Allocator</h1>
+          <p class="subtitle" data-i18n="meta.subtitle">Live Open-Meteo Satellite Feed • FAO-56 Stress Modeling • Interactive Field-Level Water Planner</p>
         </div>
       </div>
 
       <div class="header-controls">
+        <!-- Language Switcher Pill -->
+        <div class="lang-switcher-pill" id="headerLangSwitcher" title="Switch Language / భాషను ఎంచుకోండి / भाषा चुनें">
+          <button type="button" class="lang-pill-btn active" data-lang="en">EN</button>
+          <button type="button" class="lang-pill-btn" data-lang="te">తెలుగు</button>
+          <button type="button" class="lang-pill-btn" data-lang="hi">हिन्दी</button>
+        </div>
+
         <!-- State Filter Dropdown -->
         <div class="control-box">
-          <label for="stateFilter">State:</label>
+          <label for="stateFilter" data-i18n="nav.state_label">State:</label>
           <select id="stateFilter" class="select-input">
-            <option value="all">All States</option>
-            <option value="Telangana">Telangana</option>
-            <option value="Andhra Pradesh">Andhra Pradesh</option>
+            <option value="all" data-i18n="states.all">All States</option>
+            <option value="Telangana" data-i18n="states.Telangana">Telangana</option>
+            <option value="Andhra Pradesh" data-i18n="states.Andhra Pradesh">Andhra Pradesh</option>
           </select>
         </div>
 
         <!-- Local Farm Cluster Selector -->
         <div class="control-box" id="clusterControlBox" title="Click to choose a farm cluster">
-          <label for="clusterSelect">Farm Cluster:</label>
+          <label for="clusterSelect" data-i18n="nav.cluster_label">Farm Cluster:</label>
           <select id="clusterSelect" class="select-input cluster-select">
-            <optgroup label="📍 Telangana">
+            <optgroup label="📍 Telangana" data-i18n-optgroup="Telangana">
               <option value="Shadnagar Ayacut Cluster" selected>Shadnagar Ayacut Cluster (Red Sandy)</option>
               <option value="Miryalaguda Canal Command">Miryalaguda Canal Command (Black Clay)</option>
               <option value="Bodhan Nizamsagar Block">Bodhan Nizamsagar Block (Black Clay)</option>
               <option value="Siddipet Komaticheruvu Farms">Siddipet Komaticheruvu Farms (Red Sandy)</option>
             </optgroup>
-            <optgroup label="📍 Andhra Pradesh">
+            <optgroup label="📍 Andhra Pradesh" data-i18n-optgroup="Andhra Pradesh">
               <option value="Tenali Western Canal Block">Tenali Western Canal Block (Alluvial Loam)</option>
               <option value="Anantapur Tadipatri Drip Zone">Anantapur Tadipatri Drip Zone (Red Sandy)</option>
               <option value="Bhimavaram Godavari Delta Block">Bhimavaram Godavari Delta Block (Alluvial Loam)</option>
@@ -53,12 +113,12 @@
 
         <!-- Browse All Clusters Modal Trigger -->
         <button id="browseClustersBtn" class="btn btn-header" title="Browse all 8 Farm Clusters">
-          <span>🗺️</span> Browse Clusters
+          <span>🗺️</span> <span data-i18n="nav.browse_clusters">Browse Clusters</span>
         </button>
 
         <!-- Sync Live Weather -->
         <button id="syncWeatherBtn" class="btn btn-header" title="Re-fetch live Open-Meteo satellite feed">
-          <span>🔄</span> Sync Weather
+          <span>🔄</span> <span data-i18n="nav.sync_weather">Sync Weather</span>
         </button>
       </div>
     </div>
@@ -77,7 +137,7 @@
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             <button id="changeClusterBtn" class="btn btn-secondary btn-sm" title="Click to browse and switch farm clusters">
-              <span>📍</span> Switch Cluster
+              <span>📍</span> <span data-i18n="nav.switch_cluster">Switch Cluster</span>
             </button>
             <span id="clusterStatePill" class="meta-pill state-pill">—</span>
           </div>
@@ -85,15 +145,15 @@
 
         <div class="cluster-meta-details">
           <div class="meta-item">
-            <span class="meta-label">Cluster GPS Coordinates</span>
+            <span class="meta-label" data-i18n="weather.cluster_coords">Cluster GPS Coordinates</span>
             <span id="clusterCoords" class="meta-val">—</span>
           </div>
           <div class="meta-item">
-            <span class="meta-label">Soil Classification</span>
+            <span class="meta-label" data-i18n="weather.soil_classification">Soil Classification</span>
             <span id="clusterSoil" class="meta-val soil-val">—</span>
           </div>
           <div class="meta-item">
-            <span class="meta-label">Database Store</span>
+            <span class="meta-label" data-i18n="weather.db_store">Database Store</span>
             <span id="dbSourceVal" class="meta-val">—</span>
           </div>
         </div>
@@ -104,12 +164,12 @@
         <div class="weather-ribbon-header">
           <div class="live-indicator">
             <span class="live-dot"></span>
-            <span id="weatherSourceBadge">Live Open-Meteo Satellite Feed</span>
-            <span class="grid-badge">11km ECMWF Grid</span>
+            <span id="weatherSourceBadge" data-i18n="weather.source_live">Live Open-Meteo Satellite Feed</span>
+            <span class="grid-badge" data-i18n="weather.grid_label">11km ECMWF Grid</span>
           </div>
           <div class="date-container">
             <span id="weatherLatencyBadge" class="latency-badge">— ms latency</span>
-            <span id="weatherDateBadge" class="date-badge">Today</span>
+            <span id="weatherDateBadge" class="date-badge" data-i18n="weather.today">Today</span>
           </div>
         </div>
 
@@ -117,56 +177,56 @@
           <div class="w-metric">
             <span class="w-icon">🌡️</span>
             <div>
-              <span class="w-label">Max / Min Temp</span>
+              <span class="w-label" data-i18n="weather.max_min_temp">Max / Min Temp</span>
               <span id="wTemp" class="w-value">— / — °C</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">💧</span>
             <div>
-              <span class="w-label">Mean Humidity</span>
+              <span class="w-label" data-i18n="weather.mean_humidity">Mean Humidity</span>
               <span id="wHumidity" class="w-value">—%</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">💨</span>
             <div>
-              <span class="w-label">Wind Speed</span>
+              <span class="w-label" data-i18n="weather.wind_speed">Wind Speed</span>
               <span id="wWind" class="w-value">— m/s</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">☀️</span>
             <div>
-              <span class="w-label">Solar Radiation</span>
+              <span class="w-label" data-i18n="weather.solar_radiation">Solar Radiation</span>
               <span id="wSolar" class="w-value">— MJ/m²</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">🌧️</span>
             <div>
-              <span class="w-label">Rainfall (10d)</span>
+              <span class="w-label" data-i18n="weather.rainfall_10d">Rainfall (10d)</span>
               <span id="wRain" class="w-value">— mm</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">🌿</span>
             <div>
-              <span class="w-label">ET0 Demand (10d)</span>
+              <span class="w-label" data-i18n="weather.et0_demand">ET0 Demand (10d)</span>
               <span id="wEt0" class="w-value">— mm</span>
             </div>
           </div>
           <div class="w-metric highlight-sm">
             <span class="w-icon">🛰️</span>
             <div>
-              <span class="w-label">Satellite Root Soil (7-28cm)</span>
+              <span class="w-label" data-i18n="weather.satellite_root_soil">Satellite Root Soil (7-28cm)</span>
               <span id="wSoilRoot" class="w-value sm-highlight">— m³/m³</span>
             </div>
           </div>
           <div class="w-metric">
             <span class="w-icon">🌱</span>
             <div>
-              <span class="w-label">Topsoil / Profile (0-7 / 28-100cm)</span>
+              <span class="w-label" data-i18n="weather.topsoil_profile">Topsoil / Profile (0-7 / 28-100cm)</span>
               <span id="wSoilTopProf" class="w-value">— / —</span>
             </div>
           </div>
@@ -180,10 +240,10 @@
     <section class="dashboard-section">
       <div class="section-header">
         <div class="section-title-wrap">
-          <span class="section-num">01</span>
-          <h2>Interactive Farmer Water & Field Planner</h2>
+          <span class="section-num" data-i18n="planner.section_num">01</span>
+          <h2 data-i18n="planner.section_title">Interactive Farmer Water & Field Planner</h2>
         </div>
-        <p class="section-desc">Adjust your available irrigation water volume and configure your field plots to simulate real-time FAO-56 stress and optimal distribution.</p>
+        <p class="section-desc" data-i18n="planner.section_desc">Adjust your available irrigation water volume and configure your field plots to simulate real-time FAO-56 stress and optimal distribution.</p>
       </div>
 
       <div class="planner-card">
@@ -192,12 +252,12 @@
           <!-- Water Supply Input & Slider -->
           <div class="water-config-box">
             <div class="config-title">
-              <span>💧</span> Available Farm Water Supply
+              <span>💧</span> <span data-i18n="planner.available_supply_title">Available Farm Water Supply</span>
             </div>
             <div class="supply-input-row">
               <div class="supply-input-wrap">
                 <input type="number" id="waterSupplyInput" class="supply-input" min="1000" max="2000000" step="5000" value="50000" />
-                <span class="supply-unit">Liters</span>
+                <span class="supply-unit" data-i18n="planner.liters_unit">Liters</span>
               </div>
               <div class="preset-buttons">
                 <button type="button" class="preset-btn" data-liters="25000">25k L</button>
@@ -215,19 +275,19 @@
           <!-- Water Source Selector -->
           <div class="source-config-box">
             <div class="config-title">
-              <span>🚰</span> Primary Water Source
+              <span>🚰</span> <span data-i18n="planner.source_title">Primary Water Source</span>
             </div>
             <div class="source-select-group">
-              <label for="waterSourceSelect">Source Type:</label>
+              <label for="waterSourceSelect" data-i18n="planner.source_label">Source Type:</label>
               <select id="waterSourceSelect" class="source-select">
-                <option value="Borewell" selected>Borewell / Submersible Pump</option>
-                <option value="Canal / Ayacut">Canal Distributary / Ayacut Sluice</option>
-                <option value="Farm Pond">Farm Pond / Rainwater Harvesting Tank</option>
-                <option value="Open Well">Open Dug Well / Lift Irrigation</option>
+                <option value="Borewell" selected data-i18n="sources.Borewell">Borewell</option>
+                <option value="Canal Lift" data-i18n="sources.Canal Lift">Canal Lift</option>
+                <option value="Farm Pond" data-i18n="sources.Farm Pond">Farm Pond</option>
+                <option value="Open Well" data-i18n="sources.Open Well">Open Well</option>
               </select>
             </div>
             <div style="font-size: 11px; color: var(--text-faint);">
-              Irrigation depths calibrated to 4,046.86 Liters per mm/acre.
+              1 mm depth = 4,046.86 Liters / acre
             </div>
           </div>
         </div>
@@ -236,7 +296,7 @@
         <div id="deficitSurplusBanner" class="water-feedback-banner deficit">
           <div class="feedback-status-badge">
             <span id="feedbackIcon">⚠️</span>
-            <span id="feedbackStatus">CALCULATING...</span>
+            <span id="feedbackStatus" data-i18n="planner.status_deficit">WATER DEFICIT ALERT</span>
           </div>
           <div id="feedbackMessage" class="feedback-msg">
             Evaluating crop stress demands against available water supply...
@@ -247,13 +307,13 @@
         <!-- Interactive Crop Field Plot Configuration -->
         <div class="field-plots-wrap">
           <div class="plots-toolbar">
-            <h3>🌱 Your Farm Fields (Editable Plots)</h3>
+            <h3 data-i18n="planner.fields_config_title">🌱 Your Farm Fields (Editable Plots)</h3>
             <div style="display: flex; gap: 8px;">
               <button id="addPlotBtn" class="btn btn-secondary btn-sm">
-                <span>➕</span> Add Field Plot
+                <span>➕</span> <span data-i18n="planner.add_plot">Add Field Plot</span>
               </button>
               <button id="recalculateBtn" class="btn btn-primary btn-sm">
-                <span>⚡</span> Simulate Field Stress & Optimal Allocation
+                <span>⚡</span> <span data-i18n="planner.simulate_btn">Simulate Field Stress & Optimal Allocation</span>
               </button>
             </div>
           </div>
@@ -263,11 +323,11 @@
               <table class="data-table" id="farmerFieldsConfigTable">
                 <thead>
                   <tr>
-                    <th>Plot ID</th>
-                    <th>Crop Type (15 Trained Crops)</th>
-                    <th>Growth Stage</th>
-                    <th>Area (Acres)</th>
-                    <th style="text-align: center;">Action</th>
+                    <th data-i18n="planner.th_plot_id">Plot ID</th>
+                    <th data-i18n="planner.th_crop">Crop Type</th>
+                    <th data-i18n="planner.th_stage">Growth Stage</th>
+                    <th data-i18n="planner.th_area">Area (Acres)</th>
+                    <th style="text-align: center;" data-i18n="planner.th_action">Action</th>
                   </tr>
                 </thead>
                 <tbody id="farmerFieldsConfigTbody">
@@ -285,24 +345,24 @@
           <table class="data-table" id="allocationResultsTable">
             <thead>
               <tr>
-                <th>Priority</th>
-                <th>Field ID</th>
-                <th>Crop Type</th>
-                <th>Stage</th>
-                <th>Area</th>
-                <th>Root Moisture</th>
-                <th>Predicted CSI</th>
-                <th>Risk Level</th>
-                <th>Priority Score</th>
-                <th>Ideal Water Need</th>
-                <th>Allocated Water</th>
-                <th>Depth</th>
-                <th>Stress Drivers</th>
+                <th data-i18n="planner.th_res_priority">Priority</th>
+                <th data-i18n="planner.th_res_field">Field ID</th>
+                <th data-i18n="planner.th_res_crop">Crop Type</th>
+                <th data-i18n="planner.th_res_stage">Stage</th>
+                <th data-i18n="planner.th_res_area">Area</th>
+                <th data-i18n="planner.th_res_sm">Root Moisture</th>
+                <th data-i18n="planner.th_res_csi">Predicted CSI</th>
+                <th data-i18n="planner.th_res_risk">Risk Level</th>
+                <th data-i18n="planner.th_res_score">Priority Score</th>
+                <th data-i18n="planner.th_res_ideal">Ideal Water Need</th>
+                <th data-i18n="planner.th_res_allocated">Allocated Water</th>
+                <th data-i18n="planner.th_res_depth">Depth</th>
+                <th data-i18n="planner.th_res_drivers">Stress Drivers</th>
               </tr>
             </thead>
             <tbody id="allocationResultsTbody">
               <tr>
-                <td colspan="13" class="table-loading">Loading simulation...</td>
+                <td colspan="13" class="table-loading" data-i18n="planner.loading_sim">Loading simulation...</td>
               </tr>
             </tbody>
           </table>
@@ -312,25 +372,25 @@
       <!-- 4 Summary KPI Strip -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-title">Total Farm Area</div>
+          <div class="kpi-title" data-i18n="kpi.total_area">Total Monitored Area</div>
           <div class="kpi-body">
             <span id="kpiTotalAcres" class="kpi-number">—</span>
-            <span class="kpi-unit">Acres</span>
+            <span class="kpi-unit" data-i18n="kpi.acres_unit">Acres</span>
           </div>
           <div class="kpi-footer">Across all configured plots</div>
         </div>
 
         <div class="kpi-card">
-          <div class="kpi-title">Active Field Plots</div>
+          <div class="kpi-title" data-i18n="kpi.active_plots">Active Field Plots</div>
           <div class="kpi-body">
             <span id="kpiPlotCount" class="kpi-number">—</span>
-            <span class="kpi-unit">Plots</span>
+            <span class="kpi-unit" data-i18n="kpi.plots_unit">Plots</span>
           </div>
           <div class="kpi-footer" id="kpiCropVarieties">Monitoring multiple crops</div>
         </div>
 
         <div class="kpi-card">
-          <div class="kpi-title">Farm Average CSI</div>
+          <div class="kpi-title" data-i18n="kpi.avg_csi">Average Stress Index (CSI)</div>
           <div class="kpi-body">
             <span id="kpiAvgCsi" class="kpi-number">—</span>
             <span id="kpiCsiBadge" class="badge badge-moderate">—</span>
@@ -339,10 +399,10 @@
         </div>
 
         <div class="kpi-card">
-          <div class="kpi-title">Total Stress Relief Need</div>
+          <div class="kpi-title" data-i18n="charts.alloc_chart_title">Total Water Allocation</div>
           <div class="kpi-body">
             <span id="kpiTotalDemand" class="kpi-number">—</span>
-            <span class="kpi-unit">Liters</span>
+            <span class="kpi-unit" data-i18n="planner.liters_unit">Liters</span>
           </div>
           <div class="kpi-footer" id="kpiCoverageFooter">Coverage: 0%</div>
         </div>
@@ -352,8 +412,8 @@
       <div class="charts-row">
         <div class="chart-card">
           <div class="chart-header">
-            <h3>Crop Stress Risk Distribution</h3>
-            <span class="chart-subtitle">Random Forest Classification for Configured Fields</span>
+            <h3 data-i18n="charts.stress_dist_title">Crop Stress Risk Distribution</h3>
+            <span class="chart-subtitle" data-i18n="charts.stress_dist_sub">Random Forest Classification for Configured Fields</span>
           </div>
           <div class="chart-container donut-wrap">
             <canvas id="riskChart"></canvas>
@@ -362,8 +422,8 @@
 
         <div class="chart-card wide-chart">
           <div class="chart-header">
-            <h3>Water Allocation by Farmer Crop</h3>
-            <span class="chart-subtitle">Allocated Liters vs. Field Area (Acres)</span>
+            <h3 data-i18n="charts.alloc_chart_title">Water Allocation by Farmer Crop</h3>
+            <span class="chart-subtitle" data-i18n="charts.alloc_chart_sub">Allocated Liters vs. Field Area (Acres)</span>
           </div>
           <div class="chart-container">
             <canvas id="allocationChart"></canvas>
@@ -386,8 +446,8 @@
         <div class="chart-card">
           <div class="chart-header">
             <div>
-              <h3>Cluster 14-Day Climate Forecast</h3>
-              <span class="chart-subtitle">Daily Projected Max Temperature (°C), Precipitation (mm), and ET0 (mm)</span>
+              <h3 data-i18n="charts.forecast_title">Cluster 14-Day Climate Forecast</h3>
+              <span class="chart-subtitle" data-i18n="charts.forecast_sub">Daily Projected Max Temperature (°C), Precipitation (mm), and ET0 (mm)</span>
             </div>
             <div class="forecast-pills" id="forecastPills">
               <!-- Dynamically populated -->
@@ -400,11 +460,11 @@
 
         <div class="future-crops-card">
           <div class="chart-header">
-            <h3>Top 5 Recommended Crops</h3>
-            <span class="chart-subtitle">Agronomically simulated for this cluster's soil & climate</span>
+            <h3 data-i18n="charts.future_crops_title">Top 5 Recommended Crops</h3>
+            <span class="chart-subtitle" data-i18n="charts.future_crops_sub">Agronomically simulated for this cluster's soil & climate</span>
           </div>
           <div id="futureCropsList" class="future-crops-list">
-            <div class="loading-state">Evaluating next-season crop suitability...</div>
+            <div class="loading-state" data-i18n="charts.evaluating_crops">Evaluating next-season crop suitability...</div>
           </div>
         </div>
       </div>
@@ -417,16 +477,16 @@
     <div class="cluster-modal-dialog">
       <div class="cluster-modal-header">
         <div>
-          <h3>🌾 Select Farm Cluster</h3>
-          <p class="modal-subtitle">Choose from 8 localized agricultural clusters in Telangana and Andhra Pradesh</p>
+          <h3 data-i18n="modal.clusters_title">🌾 Select Farm Cluster</h3>
+          <p class="modal-subtitle" data-i18n="modal.clusters_sub">Choose from 8 localized agricultural clusters in Telangana and Andhra Pradesh</p>
         </div>
         <button id="closeClusterModalBtn" class="modal-close-btn" title="Close">&times;</button>
       </div>
 
       <div class="modal-tabs">
-        <button class="modal-tab active" data-tab-state="all">All Clusters (8)</button>
-        <button class="modal-tab" data-tab-state="Telangana">Telangana (4)</button>
-        <button class="modal-tab" data-tab-state="Andhra Pradesh">Andhra Pradesh (4)</button>
+        <button class="modal-tab active" data-tab-state="all" data-i18n="modal.tab_all">All Clusters (8)</button>
+        <button class="modal-tab" data-tab-state="Telangana" data-i18n="modal.tab_ts">Telangana (4)</button>
+        <button class="modal-tab" data-tab-state="Andhra Pradesh" data-i18n="modal.tab_ap">Andhra Pradesh (4)</button>
       </div>
 
       <div id="clusterModalGrid" class="cluster-modal-grid">
@@ -439,9 +499,9 @@
   <div id="toast" class="toast"></div>
 
   <footer class="app-footer">
-    <p>AgriStress Farmer Water & Crop Allocator • Powered by Open-Meteo High-Resolution Satellite Feed & FAO-56 Agronomic Random Forest</p>
+    <p data-i18n="meta.footer">AgriStress Farmer Water & Crop Allocator • Powered by Open-Meteo High-Resolution Satellite Feed & FAO-56 Agronomic Random Forest</p>
   </footer>
 
-  <script src="/static/app.js?v=3.5"></script>
+  <script src="/static/app.js?v=3.8"></script>
 </body>
 </html>

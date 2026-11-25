@@ -58,7 +58,7 @@
   --shadow-md: 0 4px 12px rgba(49, 44, 24, 0.10);
   --shadow-lg: 0 8px 24px rgba(49, 44, 24, 0.14);
 
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-family: 'Plus Jakarta Sans', 'Noto Sans Telugu', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 * {
@@ -1227,6 +1227,174 @@ body {
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   border: 1px solid rgba(164, 176, 146, 0.4);
+}
+
+/* =========================================================================
+   Language Switcher Pill & Pre-Dashboard Welcome Modal
+   ========================================================================= */
+.lang-switcher-pill {
+  display: flex;
+  align-items: center;
+  background: rgba(234, 229, 217, 0.15);
+  border: 1px solid rgba(234, 229, 217, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.lang-pill-btn {
+  background: transparent;
+  border: none;
+  color: #D3CDC0;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.lang-pill-btn:hover {
+  color: #FFFFFF;
+}
+
+.lang-pill-btn.active {
+  background: #FFFFFF;
+  color: var(--primary-dark);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+/* Pre-Dashboard Language Selection Modal */
+.welcome-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(49, 44, 24, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.welcome-modal-card {
+  background: var(--bg-card);
+  border: 2px solid var(--border-muted);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 40px rgba(49, 44, 24, 0.35);
+  max-width: 920px;
+  width: 100%;
+  padding: 32px 36px;
+  animation: welcomeFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.welcome-header {
+  text-align: center;
+  margin-bottom: 26px;
+}
+
+.welcome-icon {
+  font-size: 38px;
+  margin-bottom: 8px;
+}
+
+.welcome-header h2 {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.3px;
+}
+
+.welcome-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 680px;
+  margin: 6px auto 0;
+  line-height: 1.5;
+}
+
+.lang-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 840px) {
+  .lang-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lang-option-card {
+  background: var(--bg-card-elevated);
+  border: 2px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.lang-option-card:hover {
+  border-color: var(--accent-forest);
+  box-shadow: 0 8px 24px rgba(76, 84, 61, 0.18);
+  transform: translateY(-3px);
+}
+
+.lang-card-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: #EAE5D9;
+  color: var(--accent-forest);
+  border: 1px solid var(--border-muted);
+}
+
+.lang-card-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.lang-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.btn-lang-primary {
+  background: var(--accent-forest);
+  color: #FFFFFF;
+  border: none;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: inherit;
+}
+
+.btn-lang-primary:hover {
+  background: var(--accent-forest-hover);
 }
 
 /* Toast */
